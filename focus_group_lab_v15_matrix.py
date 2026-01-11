@@ -263,7 +263,7 @@ def call_grok(prompt, system_prompt, api_key):
                 "Content-Type": "application/json"
             },
             json={
-                "model": "grok-beta",
+                "model": "grok-2-latest",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -650,124 +650,131 @@ if len(st.session_state.matrix_data) >= 3:
 
 if st.session_state.matrix_data:
     st.markdown("---")
-    st.markdown("### 💾 Export & Analyze")
+    st.markdown("### 💾 Export Complete Report")
     
-    export_col1, export_col2 = st.columns(2)
+    # Build ONE comprehensive export
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+    date_stamp = datetime.now().strftime('%Y%m%d_%H%M')
     
-    with export_col1:
-        # Build export data (Markdown)
-        export_text = f"""# MATRIX-IQ Experiment Results
-## {datetime.now().strftime('%Y-%m-%d %H:%M')}
+    export_text = f"""# MATRIX-IQ EXPERIMENT REPORT
+## {timestamp}
+## SYN-IQ Team — Patent Pending 🎹
 
-### Question
-{question}
+---
 
-### Matrix Responses
+# RESEARCH QUESTION
+
+{question if question else "[No question entered]"}
+
+---
+
+# RESULTS BY TEMPERATURE
 
 """
-        
-        for agent in AGENTS:
-            for temp_label, temp_val in TEMPS:
-                cell_key = (agent, temp_val)
-                response = st.session_state.matrix_data.get(cell_key, "")
-                if response:
-                    export_text += f"#### {AGENT_EMOJIS.get(agent, '')} {agent} at {temp_label}\n\n{response}\n\n---\n\n"
-        
-        if len(st.session_state.matrix_data) >= 3:
-            analysis = analyze_matrix(st.session_state.matrix_data)
-            export_text += "\n### Analysis Summary\n\n"
-            export_text += "#### Mode Effects\n"
-            for agent, effects in analysis["mode_effects"].items():
-                export_text += f"- {agent}: {effects['overall']*100:.1f}% sensitivity\n"
-            export_text += "\n#### Agent Effects\n"
-            for temp_label, effects in analysis["agent_effects"].items():
-                export_text += f"- {temp_label}: {effects['diversity']*100:.1f}% diversity\n"
-        
-        export_text += "\n---\n*MATRIX-IQ V15 — Patent Pending — SYN-IQ Team 🎹*\n"
-        
-        st.download_button(
-            "📥 Download Markdown",
-            export_text,
-            file_name=f"matrix_iq_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
-            mime="text/markdown"
-        )
     
-    with export_col2:
-        # SYN-IQ V4 Integration - JSON Bundle
-        st.markdown("#### 🔗 Send to SYN-IQ V4")
+    # Organize by temperature for easy reading
+    for temp_label, temp_val in active_temps:
+        export_text += f"\n## {temp_label}\n\n"
         
-        # Build JSON for SYN-IQ V4
-        syniq_bundle = {
-            "experiment_name": f"MATRIX-IQ {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            "question": question,
-            "responses": {},
-            "agents": [],
-            "temperatures": []
-        }
-        
-        for agent in AGENTS:
-            for temp_label, temp_val in TEMPS:
-                cell_key = (agent, temp_val)
-                response = st.session_state.matrix_data.get(cell_key, "")
-                if response:
-                    key_name = f"{agent}_{temp_label.replace(' ', '_')}"
-                    syniq_bundle["responses"][key_name] = {
-                        "agent": agent,
-                        "temperature": temp_val,
-                        "temp_label": temp_label,
-                        "response": response
-                    }
-                    if agent not in syniq_bundle["agents"]:
-                        syniq_bundle["agents"].append(agent)
-                    if temp_label not in syniq_bundle["temperatures"]:
-                        syniq_bundle["temperatures"].append(temp_label)
-        
-        json_export = json.dumps(syniq_bundle, indent=2)
-        
-        st.download_button(
-            "📤 Export JSON for SYN-IQ V4",
-            json_export,
-            file_name=f"matrix_syniq_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-            mime="application/json",
-            help="Download JSON bundle to import into SYN-IQ V4"
-        )
-        
-        # Quick copy section for manual paste
-        with st.expander("📋 Quick Copy for SYN-IQ V4"):
-            st.markdown("**Copy these into SYN-IQ V4:**")
+        for agent in active_agents:
+            cell_key = (agent, temp_val)
+            response = st.session_state.matrix_data.get(cell_key, "")
+            emoji = AGENT_EMOJIS.get(agent, "🤖")
             
-            # Find responses by position for easy paste
-            hot_responses = []
-            for agent in AGENTS:
-                resp = st.session_state.matrix_data.get((agent, 50), "")
-                if resp:
-                    hot_responses.append((agent, resp))
+            if response:
+                export_text += f"### {emoji} {agent}\n\n{response}\n\n"
+            else:
+                export_text += f"### {emoji} {agent}\n\n*[No response]*\n\n"
+        
+        export_text += "---\n"
+    
+    # Add comparison section
+    export_text += """
+# QUICK COMPARISON
+
+## What Each Agent Said at Each Temperature:
+
+"""
+    
+    for agent in active_agents:
+        emoji = AGENT_EMOJIS.get(agent, "🤖")
+        export_text += f"### {emoji} {agent}\n\n"
+        
+        for temp_label, temp_val in active_temps:
+            cell_key = (agent, temp_val)
+            response = st.session_state.matrix_data.get(cell_key, "")
             
-            nagual_responses = []
-            for agent in AGENTS:
-                resp = st.session_state.matrix_data.get((agent, 75), "")
-                if resp:
-                    nagual_responses.append((agent, resp))
-            
-            if hot_responses:
-                st.markdown("**🔥 Hot (+50) Responses:**")
-                for i, (agent, resp) in enumerate(hot_responses):
-                    st.text_area(
-                        f"Position {i+1}: {agent}",
-                        resp[:500] + "..." if len(resp) > 500 else resp,
-                        height=100,
-                        key=f"copy_hot_{agent}"
-                    )
-            
-            if nagual_responses:
-                st.markdown("**🔮 Nagual (+75) Responses:**")
-                for i, (agent, resp) in enumerate(nagual_responses):
-                    st.text_area(
-                        f"Position {i+1}: {agent}",
-                        resp[:500] + "..." if len(resp) > 500 else resp,
-                        height=100,
-                        key=f"copy_nagual_{agent}"
-                    )
+            if response:
+                # Get first 150 chars as summary
+                summary = response[:150].replace('\n', ' ')
+                if len(response) > 150:
+                    summary += "..."
+                export_text += f"- **{temp_label}:** {summary}\n"
+            else:
+                export_text += f"- **{temp_label}:** *[No response]*\n"
+        
+        export_text += "\n"
+    
+    # Add analysis if available
+    if len(st.session_state.matrix_data) >= 3:
+        analysis = analyze_matrix(st.session_state.matrix_data)
+        
+        export_text += """---
+
+# ANALYSIS
+
+## Mode Effects (How much does temperature change each agent?)
+
+"""
+        for agent, effects in analysis["mode_effects"].items():
+            emoji = AGENT_EMOJIS.get(agent, "🤖")
+            export_text += f"- {emoji} **{agent}:** {effects['overall']*100:.1f}% sensitivity (Cold→Hot: {effects['cold_to_hot']*100:.0f}%)\n"
+        
+        export_text += """
+## Agent Effects (How different are agents at same temperature?)
+
+"""
+        for temp_label, effects in analysis["agent_effects"].items():
+            export_text += f"- **{temp_label}:** {effects['diversity']*100:.1f}% diversity\n"
+        
+        if analysis["cannot_count"] > 0:
+            export_text += f"""
+## Knowledge Wall
+
+⚠️ {analysis["cannot_count"]} response(s) contained "I cannot" — indicating limits of formal logic.
+"""
+    
+    # Footer
+    export_text += f"""
+---
+
+# METADATA
+
+- **Experiment Date:** {timestamp}
+- **Agents Used:** {', '.join(active_agents)}
+- **Temperatures Used:** {', '.join([t[0] for t in active_temps])}
+- **Total Responses:** {len(st.session_state.matrix_data)}
+
+---
+
+*MATRIX-IQ V15 — Focus Group Lab*
+*Patent Pending — SYN-IQ Team 🎹*
+*CBURZBO Forever!*
+"""
+    
+    # Single download button
+    st.download_button(
+        "📥 DOWNLOAD COMPLETE REPORT",
+        export_text,
+        file_name=f"MATRIX_IQ_Report_{date_stamp}.md",
+        mime="text/markdown",
+        type="primary",
+        use_container_width=True
+    )
+    
+    # Preview
+    with st.expander("👁️ Preview Report"):
+        st.markdown(export_text)
 
 # ============================================
 # FOOTER
