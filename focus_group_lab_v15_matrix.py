@@ -124,11 +124,15 @@ def get_api_keys():
     except:
         pass
     
-    # Override with session state if set
-    keys["anthropic"] = st.session_state.get("api_anthropic", keys.get("anthropic", ""))
-    keys["openai"] = st.session_state.get("api_openai", keys.get("openai", ""))
-    keys["xai"] = st.session_state.get("api_xai", keys.get("xai", ""))
-    keys["google"] = st.session_state.get("api_google", keys.get("google", ""))
+    # Override with session state ONLY if user entered something
+    if st.session_state.get("api_anthropic", "").strip():
+        keys["anthropic"] = st.session_state.get("api_anthropic", "")
+    if st.session_state.get("api_openai", "").strip():
+        keys["openai"] = st.session_state.get("api_openai", "")
+    if st.session_state.get("api_xai", "").strip():
+        keys["xai"] = st.session_state.get("api_xai", "")
+    if st.session_state.get("api_google", "").strip():
+        keys["google"] = st.session_state.get("api_google", "")
     
     return keys
 
