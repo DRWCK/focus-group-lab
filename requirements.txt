@@ -5,3 +5,5 @@ requests
 vaderSentiment
 Anthropic
 textstat
+sentence-transformers
+scikit-learn
