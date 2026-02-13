@@ -7,3 +7,4 @@ Anthropic
 textstat
 sentence-transformers
 scikit-learn
+kmapper
