@@ -8,3 +8,4 @@ textstat
 sentence-transformers
 scikit-learn
 kmapper
+python-docx
