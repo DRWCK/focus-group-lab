@@ -1493,12 +1493,12 @@ if st.session_state.results:
     st.markdown(f"<div class='mono'>{len(browse_df)} responses</div>", unsafe_allow_html=True)
 
     for _, row in browse_df.head(20).iterrows():
-        temp_label  = r.get("temperature","NATIVE")
-        depth_label = r.get("depth","?")
+        temp_label  = row.get("temperature","NATIVE")
+        depth_label = row.get("depth","?")
         temp_emoji  = TEMP_EMOJIS.get(temp_label,"")
         cam_label   = ""
-        if "con_pct" in r:
-            cam_label = f" | CON:{r['con_pct']:.0f}% ABS:{r['abs_pct']:.0f}% MET:{r['met_pct']:.0f}%"
+        if "con_pct" in row:
+            cam_label = f" | CON:{row['con_pct']:.0f}% ABS:{row['abs_pct']:.0f}% MET:{row['met_pct']:.0f}%"
         with st.expander(
             f"{AGENT_EMOJIS.get(row['agent'], '🔵')} {row['agent']} | {row['question_id']} | "
             f"{temp_emoji}{temp_label} | {depth_label} | Run {row['run']} | "
