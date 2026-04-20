@@ -11,3 +11,4 @@ kmapper
 python-docx
 openai
 google-generativeai
+plotly
