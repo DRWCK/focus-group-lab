@@ -1,0 +1,1022 @@
+"""
+SYN-IQ · Transcript Scorer v6.2.1
+William C. Kouns · SYNINT.AI · May 2026
+
+V6.2.1 CHANGES (from V6.2) — summary additions
+----------------------------------------------
+1. ✅ NEW: per-speaker word totals in both summary tables.
+     - `summarize_by_speaker` now includes a `total_words` column
+       (sum of words per turn, by speaker) alongside the existing
+       per-turn `words` mean.
+     - `summarize_combined` now includes `human_total_words` and
+       `ai_total_words` next to the existing `total_words`.
+     This makes it possible to see at a glance how much each side
+     contributed in raw words — useful for asymmetry diagnostics
+     and for sanity-checking AI verbosity against human prompts.
+2. Scoring math and parsing behavior unchanged. tool_version stamp
+   advances to 'V6.2.1' so downstream tools can identify the schema.
+
+V6.2 CHANGES (from V6.1) — turn-boundary fix
+--------------------------------------------
+1. ✅ FIXED: turn fragmentation on label-less Claude.ai docx exports.
+     V6.1's parse_labeled_transcript correctly concatenates paragraphs
+     between **You said:** / **Claude responded:** tags. But not every
+     Claude.ai export carries those tags — the most common pattern when
+     the conversation is pasted or saved without the speaker chrome is
+     plain text with standalone timestamps ("9:10 AM", "9:13 AM") as
+     the only boundary signal. On those files, parse_labeled_transcript
+     returns ~1 mega-turn (no tags to anchor on) and the default
+     parse_alternating_transcript fragments per paragraph and flip-flops
+     speakers, producing 300+ "turns" with 13-word medians for what is
+     actually a ~50-turn conversation.
+     V6.2 adds parse_timestamp_segmented, which uses standalone
+     HH:MM AM/PM lines as turn-group anchors and concatenates every
+     paragraph between two timestamps into a single turn (AI body =
+     all-but-last block in the group, human reply = last block before
+     the next timestamp). On the canonical Claude_discussion.docx test
+     case, the previous parsers produced 317 fragments / median 13
+     words; the new parser produces 50 turns / median 68 words, perfect
+     1:1 human/AI alternation, zero same-speaker adjacencies.
+2. ✅ NEW: parse_auto + detect_transcript_format auto-route the input
+     to the right parser based on which boundary signal is present —
+     speaker labels (≥2 → labeled), then timestamps (≥2 → timestamped),
+     then fall through to alternating. A user pasting a labeled
+     transcript no longer fragments it by leaving "Auto alternating"
+     selected.
+3. ✅ NEW: parse mode dropdown gains "Auto-detect" (now the default).
+     The three explicit modes remain available for cases where the
+     heuristic guesses wrong.
+4. ✅ Scoring math, syniq_core integration, dyadic computations, and
+     all other V6.1 behavior are unchanged. This is purely a parsing
+     fix.
+
+V6.1 CHANGES (from V6)
+----------------------
+1. ✅ FIXED: parse_labeled_transcript now handles real Claude.ai docx
+     exports. V6's parser only matched bare "Human:" / "Claude:" prefixes;
+     it failed completely on the actual export format which uses
+     "**Claude responded: <preview>**" and "**You said: <preview>**" as
+     bold-wrapped speaker tags. On a real export, V6 would either parse
+     to zero turns or fall through to the alternating parser, which
+     splits on blank lines and turns every paragraph break inside a
+     response into its own "turn." That's how V6 reported 48 turns on
+     a 6-turn conversation.
+     V6.1 recognizes the bold-wrapped speaker tags, treats standalone
+     timestamps (e.g. "10:31 AM") as separators (not turns), and keeps
+     section-heading lines (bolded mini-headers like "**The pivot.**")
+     as part of the surrounding turn rather than splitting on them.
+2. ✅ FIXED: V5.2 preview-line dedup ported into V6.1's parser.
+     V6 dropped the V5.2 fix during the syniq_core migration. The
+     Claude.ai export pattern duplicates the first sentence of every
+     turn (once standalone, once at the start of the body). V6.1 detects
+     this artifact and drops the standalone preview-echo line while
+     keeping the response body — and its naturally-occurring opener —
+     intact. One copy of the opening sentence survives.
+3. ✅ FIXED: parse_alternating_transcript also runs the dedup, since
+     pasted Claude.ai exports may go through either path.
+4. ✅ Speaker tag patterns extended to recognize: "Claude responded:",
+     "Claude said:", "You said:", "User said:", and the V5/V6
+     bare-prefix forms (Human:, Claude:, etc.) — bold-wrapped or plain.
+5. Synergy formula and all V6 syniq_core integration preserved
+     unchanged. This is purely a parsing fix; scoring math is identical
+     to V6.
+
+V6 (prior, retained below)
+--------------------------
+1. ✅ MIGRATION: All scoring routed through syniq_core.
+     — Inline IEP and V_t lexicons removed; imported from syniq_core.
+     — Bit-identical scoring across V52 (harvester), V6 (transcript scorer),
+       and any future syniq_core-based tool. Drift protection via
+       syniq_core_tests.py.
+     — V_t now produced as a properly normalized 5-simplex (sums to 1.0)
+       via syniq_core, fixing the V_t normalization issue identified in
+       vt_analyzer.py.
+2. ✅ NEW: CAM (Concrete / Abstract / Metaphorical) per turn.
+     — New columns: con_pct, abs_pct, met_pct, cam_matched.
+     — Dyadic CAM divergence: delta_M (L1 distance between human and AI
+       CAM vectors per pair).
+     — Captures representational mode — orthogonal to IEP register.
+3. ✅ NEW: Full IEP subclass taxonomy per turn.
+     — 23 subclasses (7 AFF + 8 INT + 8 ACT, V1_phenomenological).
+     — Phenomenological naming (not 'emergent') per established methodology.
+4. ✅ NEW: V50 validated instruments per turn.
+     — VADER (compound, pos, neg, neu) — sentiment polarity.
+     — Flesch-Kincaid grade and Flesch reading ease.
+     — Type-token ratio (TTR), unique_words, total_words.
+5. ✅ NEW: Version stamps on every row.
+     — core_version, iep_dictionary_version, cam_dictionary_version,
+       subclass_taxonomy_version, vt_engine_version,
+       validated_instruments_version, tool_version='V6'.
+     — Identifies scoring regime per row, independent of UI version.
+
+What it does
+------------
+1. Parse pasted conversation blocks into speaker turns
+2. Score each turn for: IEP (top-level + 23 subclasses) / V_t (5-simplex) /
+   CAM (3-simplex) / VADER / Flesch / TTR
+3. Produce three output tables:
+   - Turn-level scores
+   - Human-only / AI-only summaries
+   - Combined conversation summary
+4. Compute dyadic metrics per HUMAN→AI pair:
+   - delta_C  (L1 distance between IEP simplices)
+   - delta_V  (L1 distance between V_t simplices)
+   - delta_M  (L1 distance between CAM simplices)  — NEW in V6
+   - shift_C / shift_V / shift_M  (turn-to-turn within speaker)  — shift_M new
+   - synergy_score  (combined dyadic-coupling × novelty-class metric)
+5. Export CSVs (turn-level, speaker summary, combined summary)
+
+Notes
+-----
+- Pasted text usually loses chat-box shading, so this tool uses robust text
+  heuristics plus optional manual speaker labels.
+- If your source already contains a 'speaker' field, you can paste or
+  upload CSV.
+- The framework is grounded in the IEP+V_t+CAM Dual-State + Representational
+  Mode framework. delta_C, delta_V, delta_M are the dyadic divergence
+  quantities defined in the STARI Pilot brief.
+
+Dependencies (must be in same directory)
+----------------------------------------
+- syniq_core.py  (REQUIRED — canonical measurement core)
+"""
+
+import datetime
+import io
+import math
+import re
+from typing import List, Tuple, Dict, Optional
+
+import pandas as pd
+import streamlit as st
+
+# ──────────────────────────────────────────────────────────────────────────────
+# V6: Canonical scoring via syniq_core. No inline lexicons.
+# ──────────────────────────────────────────────────────────────────────────────
+# The V5 IEP and V_t lexicons that were inlined in this file have been
+# removed. All measurement now flows from syniq_core, the canonical
+# scoring module also used by V52 (native baseline harvester) and the
+# Core Test Lab. This is the same migration we did for V52: end the
+# drift between tools that each carried their own copy of the dictionaries.
+# ──────────────────────────────────────────────────────────────────────────────
+
+from syniq_core import (
+    score_iep as core_score_iep,
+    score_vt as core_score_vt,
+    score_cam as core_score_cam,
+    score_validated_instruments as core_score_vi,
+    score_all as core_score_all,
+    CORE_VERSION,
+    VERSION_STAMPS as CORE_STAMPS,
+)
+
+# V6 subclass-name lists (PHENOMENOLOGICAL naming, matching syniq_core's
+# V1_phenomenological taxonomy). Used to construct CSV column names.
+AFF_SUBCLASS_NAMES = ["distress", "warmth", "relational", "self_state", "positive", "intensity", "phenomenological"]
+INT_SUBCLASS_NAMES = ["analytical", "conceptual", "epistemic", "structural", "critical", "lexical", "hedging", "phenomenological"]
+ACT_SUBCLASS_NAMES = ["execution", "planning", "building", "improvement", "provision", "leadership", "achievement", "phenomenological"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Novelty weights (preserved from V5 — synergy-score parameter)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_NOVELTY_WEIGHTS = {
+    "none": 0.00,
+    "practical — new tool / method / design": 0.15,
+    "conceptual — new framework / distinction / hypothesis": 0.30,
+    "relational — phenomenological / emergent insight": 0.35,
+    "breakthrough — paradigm shift": 0.50,
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers (mostly preserved from V5)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def normalize_vector(vals: List[float]) -> List[float]:
+    """Project a non-negative vector onto the simplex by L1 normalization."""
+    total = sum(vals)
+    if total <= 0:
+        n = len(vals)
+        return [1.0 / n] * n if n > 0 else []
+    return [v / total for v in vals]
+
+def l1_distance(v1: List[float], v2: List[float]) -> float:
+    """L1 distance between two simplex vectors."""
+    if v1 is None or v2 is None: return 0.0
+    return sum(abs(a - b) for a, b in zip(v1, v2))
+
+def first_sentence(text: str) -> str:
+    """First sentence (or first 120 chars) — used for the 'opener' column."""
+    s = re.split(r'(?<=[.!?])\s+', text.strip(), maxsplit=1)
+    return (s[0] if s else text)[:120]
+
+def quadrant(int_pct: float, aff_pct: float) -> str:
+    """IEP quadrant label."""
+    if int_pct >= 50 and aff_pct < 25: return "ANALYST"
+    if int_pct >= 50 and aff_pct >= 25: return "REFLECTIVE"
+    if int_pct < 50 and aff_pct >= 50: return "EMOTIVE"
+    if int_pct < 50 and aff_pct < 25: return "DOER"
+    return "MIXED"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Canonical scoring wrappers — thin shims around syniq_core
+# ──────────────────────────────────────────────────────────────────────────────
+
+def score_turn_full(text: str) -> Dict:
+    """Canonical full measurement of a single turn.
+
+    Returns a flat dict with all measurement axes:
+      IEP top-level: int_pct, aff_pct, act_pct, int_count, aff_count, act_count
+      IEP qualitative: stance, tone, dominant, quadrant
+      IEP subclasses: aff_sub_*, int_sub_*, act_sub_* (23 columns)
+      V_t simplex: S_t, A_t, Q_t, D_t, R_t (sums to 1.0)
+      CAM simplex: con_pct, abs_pct, met_pct, cam_matched
+      V50 validated: vader_compound, vader_pos, vader_neg, vader_neu,
+                     flesch_kincaid, flesch_ease, ttr, unique_words, total_words
+    """
+    if not text or not text.strip():
+        # Empty turn — populate with zeros / empty strings, matching V52 convention
+        out = {
+            "int_pct": 0.0, "aff_pct": 0.0, "act_pct": 0.0,
+            "int_count": 0, "aff_count": 0, "act_count": 0,
+            "stance": "", "tone": "", "iep_dominant": "", "iep_quadrant": "",
+            "S_t": 0.0, "A_t": 0.0, "Q_t": 0.0, "D_t": 0.0, "R_t": 0.0,
+            "vt_score_status": "default_empty",
+            "con_pct": 0.0, "abs_pct": 0.0, "met_pct": 0.0, "cam_matched": 0,
+            "vader_compound": 0.0, "vader_pos": 0.0, "vader_neg": 0.0, "vader_neu": 0.0,
+            "flesch_kincaid": 0.0, "flesch_ease": 0.0,
+            "ttr": 0.0, "unique_words": 0, "total_words": 0,
+        }
+        for s in AFF_SUBCLASS_NAMES: out[f"aff_sub_{s}"] = 0.0
+        for s in INT_SUBCLASS_NAMES: out[f"int_sub_{s}"] = 0.0
+        for s in ACT_SUBCLASS_NAMES: out[f"act_sub_{s}"] = 0.0
+        return out
+
+    full = core_score_all(text)
+    iep, vt, cam, vi = full["iep"], full["vt"], full["cam"], full["vi"]
+
+    out = {
+        # IEP top-level
+        "int_pct": iep["int"],
+        "aff_pct": iep["aff"],
+        "act_pct": iep["act"],
+        "int_count": iep["int_n"],
+        "aff_count": iep["aff_n"],
+        "act_count": iep["act_n"],
+        "stance": iep.get("stance", ""),
+        "tone": iep.get("tone", ""),
+        "iep_dominant": iep.get("dominant", ""),
+        "iep_quadrant": iep.get("quadrant", ""),
+        # V_t simplex (canonical, sums to 1.0)
+        "S_t": vt.get("S_t", 0.0),
+        "A_t": vt.get("A_t", 0.0),
+        "Q_t": vt.get("Q_t", 0.0),
+        "D_t": vt.get("D_t", 0.0),
+        "R_t": vt.get("R_t", 0.0),
+        "vt_score_status": vt.get("score_status", ""),
+        # CAM
+        "con_pct": cam["con_pct"],
+        "abs_pct": cam["abs_pct"],
+        "met_pct": cam["met_pct"],
+        "cam_matched": cam["cam_matched"],
+        # V50 validated instruments
+        "vader_compound": vi["vader_compound"],
+        "vader_pos":      vi["vader_pos"],
+        "vader_neg":      vi["vader_neg"],
+        "vader_neu":      vi["vader_neu"],
+        "flesch_kincaid": vi["flesch_kincaid"],
+        "flesch_ease":    vi["flesch_ease"],
+        "ttr":            vi["ttr"],
+        "unique_words":   vi["unique_words"],
+        "total_words":    vi["total_words"],
+    }
+    # 23 subclass columns
+    aff_sub = iep.get("aff_sub", {})
+    int_sub = iep.get("int_sub", {})
+    act_sub = iep.get("act_sub", {})
+    for s in AFF_SUBCLASS_NAMES: out[f"aff_sub_{s}"] = aff_sub.get(s, 0.0)
+    for s in INT_SUBCLASS_NAMES: out[f"int_sub_{s}"] = int_sub.get(s, 0.0)
+    for s in ACT_SUBCLASS_NAMES: out[f"act_sub_{s}"] = act_sub.get(s, 0.0)
+    return out
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Synergy score (preserved from V5, extended for delta_M)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def compute_synergy_score(delta_c: float, delta_v: float, delta_m: float,
+                          novelty_type: str, shift_c_h: float, shift_c_ai: float) -> float:
+    """V6: Synergy score now incorporates delta_M (CAM divergence).
+
+    Higher delta values indicate larger dyadic divergence; novelty_type
+    contributes a constant additive bonus reflecting the conceptual class
+    of the exchange. The synergy score quantifies coupled productive
+    divergence — moderate divergence with maintained turn-to-turn coupling
+    is hypothesized (per the STARI Pilot framework) to produce maximal
+    relational novelty.
+    """
+    nw = _NOVELTY_WEIGHTS.get(novelty_type, 0.0)
+    coupling = 1.0 - 0.5 * (abs(shift_c_h) + abs(shift_c_ai))
+    coupling = max(0.0, min(1.0, coupling))
+    # V6: delta_M weighted at half delta_V's influence (CAM is a slower-moving
+    # signal than expressive form V_t, so a smaller weight is appropriate
+    # for a per-turn synergy estimate). Adjustable in future tuning.
+    raw = (0.4 * delta_c) + (0.4 * delta_v) + (0.2 * delta_m) + nw
+    return round(raw * coupling, 4)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Transcript parsing (V6.1 — handles real Claude.ai docx exports)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Standalone-line patterns that should be DROPPED entirely (not turns,
+# not part of any turn): timestamps like "10:31 AM" or "9:05 PM".
+_TIMESTAMP_LINE = re.compile(r"^\s*\d{1,2}:\d{2}\s*(?:AM|PM)?\s*$", re.IGNORECASE)
+
+# Speaker tag patterns. Each captures the rest-of-line content after the
+# tag (which may be the duplicated preview sentence, bold-wrapped).
+# Group 1 = the speaker keyword; group 2 = the inline content after the colon.
+_SPEAKER_TAG = re.compile(
+    r"""
+    ^\s*
+    (?:\*\*|__)?\s*                     # optional opening bold
+    (?P<speaker>
+        Claude\s+responded
+      | Claude\s+said
+      | You\s+said
+      | User\s+said
+      | Human
+      | User
+      | Conductor
+      | H
+      | AI
+      | Assistant
+      | Claude
+      | ChatGPT
+      | Sophia
+      | Grok
+      | Gemini
+      | Bot
+      | Model
+      | A
+    )
+    \s*[:\-—]\s*
+    (?P<content>.*?)                    # inline content (may be empty)
+    \s*(?:\*\*|__)?\s*$                 # optional closing bold
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+_HUMAN_KEYS = {"human", "user", "conductor", "h", "you said", "user said"}
+
+def _classify_speaker(raw: str) -> str:
+    """Map a captured speaker keyword to 'human' or 'ai'."""
+    key = re.sub(r"\s+", " ", raw.strip().lower())
+    return "human" if key in _HUMAN_KEYS else "ai"
+
+def _strip_bold_markers(s: str) -> str:
+    """Remove leading/trailing **/__ markers from a line."""
+    s = s.strip()
+    # Strip pairs of leading and trailing bold markers (** or __)
+    while True:
+        if (s.startswith("**") and s.endswith("**") and len(s) >= 4) or \
+           (s.startswith("__") and s.endswith("__") and len(s) >= 4):
+            s = s[2:-2].strip()
+        else:
+            break
+    return s
+
+def _dedupe_preview_sentence(turn_text: str) -> str:
+    """
+    V5.2 → V6.1: When a turn opens with a sentence that is then immediately
+    re-stated as the prefix of the response body, drop the standalone
+    preview-echo line and keep the body intact.
+
+    Pattern (Claude.ai export artifact):
+        "<Sentence A>\n<Sentence A> <rest of response>"
+    Becomes:
+        "<Sentence A> <rest of response>"
+
+    Conservative — fires only when ALL three conditions hold:
+      (a) the turn has >= 2 lines after parsing,
+      (b) the first line ends in sentence-final punctuation (. ! ?),
+      (c) the rest begins with the EXACT text of the first line.
+    Otherwise returns turn_text unchanged.
+    """
+    lines = turn_text.split('\n', 1)
+    if len(lines) < 2:
+        return turn_text
+    first_line = lines[0].strip()
+    rest = lines[1].lstrip()
+    if not first_line or first_line[-1] not in '.!?':
+        return turn_text
+    if rest.startswith(first_line):
+        return rest
+    return turn_text
+
+def clean_lines(text: str) -> List[str]:
+    return [l.strip() for l in text.splitlines() if l.strip()]
+
+def parse_labeled_transcript(text: str) -> List[Dict]:
+    """V6.1: Parse Claude.ai docx-export style transcripts.
+
+    Recognizes:
+      - **Claude responded: <preview>**   → AI turn (preview is duplicated
+                                            in the body; dedup'd later)
+      - **You said: <preview>**           → human turn (same)
+      - Bare Human:/Claude:/etc. prefixes → V5/V6 fallback
+      - 10:31 AM / 9:05 PM standalone     → discarded as separators
+      - Bolded section headings inside a   → kept as part of the turn
+        response (e.g. **The pivot.**)
+      - Untagged opening text before the   → treated as the first human
+        first speaker tag                    turn (common in exports where
+                                              the very first message has no
+                                              "You said:" prefix)
+    """
+    turns: List[Dict] = []
+    cur_sp: Optional[str] = None
+    cur_buf: List[str] = []
+
+    def _flush():
+        if cur_sp is not None and cur_buf:
+            joined = "\n".join(cur_buf).strip()
+            joined = _dedupe_preview_sentence(joined)
+            if joined:
+                turns.append({"speaker": cur_sp, "text": joined})
+
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            # Blank lines inside a turn are just paragraph separators —
+            # we keep them out of the buffer (we'll re-paragraph on
+            # output if needed) but they don't end the turn.
+            continue
+        if _TIMESTAMP_LINE.match(s):
+            # Standalone timestamp — discard, do not split turn.
+            continue
+        m = _SPEAKER_TAG.match(s)
+        if m:
+            # New speaker tag — flush previous turn and start a new one.
+            _flush()
+            cur_sp = _classify_speaker(m.group("speaker"))
+            content = _strip_bold_markers(m.group("content") or "")
+            cur_buf = [content] if content else []
+        else:
+            # Continuation of current turn. Strip surrounding bold markers
+            # so section headings ("**The pivot.**") become "The pivot."
+            # and contribute to scoring without inflating with markdown
+            # punctuation noise.
+            cur_buf.append(_strip_bold_markers(s))
+            if cur_sp is None:
+                # No speaker tag has been seen yet — this is opening text
+                # before the first labeled turn. Treat as a human turn.
+                cur_sp = "human"
+
+    _flush()
+    return [t for t in turns if t["text"]]
+
+def parse_alternating_transcript(text: str, first_speaker: str = "human") -> List[Dict]:
+    """V6.1: Parse transcripts with no labels, alternating turns by paragraph.
+
+    Also runs _dedupe_preview_sentence on each turn — pasted Claude.ai
+    exports may go through this path if the user picks 'Auto alternating',
+    and the artifact still needs to be removed.
+    """
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", text) if b.strip()]
+    turns: List[Dict] = []
+    sp = first_speaker
+    for b in blocks:
+        # Strip standalone timestamps that may sit alone in their own block
+        if _TIMESTAMP_LINE.match(b):
+            continue
+        deduped = _dedupe_preview_sentence(b)
+        turns.append({"speaker": sp, "text": deduped})
+        sp = "ai" if sp == "human" else "human"
+    return turns
+
+# ──────────────────────────────────────────────────────────────────────────────
+# V6.2 NEW — timestamp-segmented parser + auto-detect dispatcher
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Matches any of the recognized speaker-label forms used by parse_labeled_transcript.
+# Counted to decide whether the input is labeled or label-less.
+_LABEL_PROBE = re.compile(
+    r"(?im)^\s*(?:\*\*|__)?\s*"
+    r"(?:you said|user said|human said|conductor said|i said|"
+    r"claude responded|chatgpt responded|assistant responded|ai responded|"
+    r"grok responded|gemini responded|sophia responded|model responded)\s*:?",
+)
+
+def detect_transcript_format(text: str) -> str:
+    """Classify the boundary signal present in the raw transcript.
+
+    Returns one of:
+      - 'labeled'      — at least 2 speaker-label occurrences (You said / Claude
+                         responded / etc.). parse_labeled_transcript will handle.
+      - 'timestamped'  — no labels (or just one), but at least 2 standalone
+                         "HH:MM AM/PM" lines. parse_timestamp_segmented handles.
+      - 'alternating'  — neither signal present in usable quantity. Fall back
+                         to the legacy alternating parser.
+
+    Threshold of 2 (not 1) for both signals avoids false positives from a
+    single stray timestamp in the middle of message body, or a single
+    mid-quote "She said:" string.
+    """
+    n_labels = len(_LABEL_PROBE.findall(text))
+    if n_labels >= 2:
+        return 'labeled'
+    n_ts = sum(1 for line in text.splitlines() if _TIMESTAMP_LINE.match(line.strip()))
+    if n_ts >= 2:
+        return 'timestamped'
+    return 'alternating'
+
+def parse_timestamp_segmented(text: str, first_speaker: str = "human") -> List[Dict]:
+    """V6.2: Parse Claude.ai docx exports where standalone timestamps are
+    the only turn-boundary signal.
+
+    Format (observed in Claude_discussion.docx and similar exports):
+
+        <human paragraph(s)>
+        9:10 AM
+        <AI paragraph(s)>
+        <human reply>
+        9:13 AM
+        <AI paragraph(s)>
+        <human reply>
+        9:15 AM
+        ...
+
+    A timestamp marks the BOUNDARY between a human turn (just before it)
+    and the AI turn that follows. The AI turn runs until the LAST
+    block before the next timestamp — that last block is the human
+    reply that triggered the next AI response. The very first block(s)
+    (before any timestamp) form an opening human turn. The block(s)
+    after the final timestamp form the final AI turn (no trailing human).
+
+    Per the spec: paragraph breaks INSIDE a turn become "\\n\\n" joiners
+    in the concatenated text, so downstream structural detection
+    (numbered lists, bullets, bold headers) still works correctly.
+
+    `first_speaker` defaults to 'human' since chat exports overwhelmingly
+    open with the human side. Pass 'ai' for the rare case where the AI
+    initiates.
+    """
+    blocks: List[Tuple[str, str]] = []
+    for raw in re.split(r"\n\s*\n", text):
+        b = raw.strip()
+        if not b:
+            continue
+        if _TIMESTAMP_LINE.match(b):
+            blocks.append(('ts', b))
+        else:
+            blocks.append(('text', b))
+
+    if not blocks:
+        return []
+
+    ts_idx = [i for i, (kind, _) in enumerate(blocks) if kind == 'ts']
+
+    # Degenerate case: no timestamps after all (e.g. caller routed here
+    # by mistake). Fall back to alternating to avoid returning nothing.
+    if not ts_idx:
+        return parse_alternating_transcript(text, first_speaker=first_speaker)
+
+    turns: List[Dict] = []
+    opp_speaker = "ai" if first_speaker == "human" else "human"
+
+    # Opening turn: everything before the first timestamp belongs to
+    # `first_speaker` (typically the human).
+    opening_blocks = [b for kind, b in blocks[:ts_idx[0]] if kind == 'text']
+    if opening_blocks:
+        turns.append({
+            "speaker": first_speaker,
+            "text": _dedupe_preview_sentence("\n\n".join(opening_blocks)),
+        })
+
+    for k, idx in enumerate(ts_idx):
+        next_ts = ts_idx[k + 1] if k + 1 < len(ts_idx) else len(blocks)
+        between = [b for kind, b in blocks[idx + 1:next_ts] if kind == 'text']
+        if not between:
+            continue
+        if next_ts < len(blocks):
+            # Mid-conversation: AI body = all but last block; reply = last.
+            ai_blocks = between[:-1]
+            reply_block = between[-1]
+            if ai_blocks:
+                turns.append({
+                    "speaker": opp_speaker,
+                    "text": _dedupe_preview_sentence("\n\n".join(ai_blocks)),
+                })
+            turns.append({
+                "speaker": first_speaker,
+                "text": _dedupe_preview_sentence(reply_block),
+            })
+        else:
+            # Final timestamp: remainder is one AI turn, no trailing reply.
+            turns.append({
+                "speaker": opp_speaker,
+                "text": _dedupe_preview_sentence("\n\n".join(between)),
+            })
+
+    return [t for t in turns if t["text"]]
+
+def parse_auto(text: str, first_speaker: str = "human") -> List[Dict]:
+    """V6.2: Dispatch to the right parser based on the boundary signal.
+
+    Returns (turns, format_used) so the UI can show which parser ran.
+    See detect_transcript_format for the routing rules.
+    """
+    fmt = detect_transcript_format(text)
+    if fmt == 'labeled':
+        return parse_labeled_transcript(text), 'labeled'
+    if fmt == 'timestamped':
+        return parse_timestamp_segmented(text, first_speaker=first_speaker), 'timestamped'
+    return parse_alternating_transcript(text, first_speaker=first_speaker), 'alternating'
+
+def parse_uploaded_csv(file) -> pd.DataFrame:
+    """Parse an uploaded CSV with columns including at least `speaker` and `text`."""
+    df = pd.read_csv(file)
+    if "speaker" not in df.columns or "text" not in df.columns:
+        st.error("CSV must contain at least 'speaker' and 'text' columns.")
+        return pd.DataFrame()
+    df["speaker"] = df["speaker"].fillna("").astype(str).str.lower().map(
+        lambda s: "human" if s in {"human","user","conductor","h"} else "ai"
+    )
+    return df
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Per-turn scoring + dyadic computation (V6 — extended with CAM)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def score_turns(turns: List[Dict], novelty_type: str, session_id: str, ai_label: str) -> pd.DataFrame:
+    """Score each turn through syniq_core; compute dyadic metrics per HUMAN→AI pair.
+
+    V6 additions over V5:
+      - All scoring through syniq_core (canonical regime, drift-protected)
+      - CAM measurements per turn (con_pct, abs_pct, met_pct, cam_matched)
+      - delta_M (CAM divergence) per pair
+      - shift_M_h / shift_M_ai (within-speaker CAM turn-to-turn change)
+      - 23 IEP subclass columns per turn
+      - V50 validated instruments per turn
+      - Version stamps per row
+    """
+    rows = []
+    prev_h_c = prev_ai_c = None
+    prev_h_v = prev_ai_v = None
+    prev_h_m = prev_ai_m = None  # V6: previous CAM vectors
+    pending_human = None
+    pair_index = 0
+
+    for idx, t in enumerate(turns, start=1):
+        speaker = t["speaker"]
+        txt = t["text"]
+        words = len(txt.split())
+
+        # V6: full canonical scoring via syniq_core
+        scored = score_turn_full(txt)
+
+        # IEP simplex (already normalized inside syniq_core, but the CSV
+        # field 'I/E/A' historically uses normalized values — preserve V5 idiom)
+        c_vec = normalize_vector([scored["int_pct"], scored["aff_pct"], scored["act_pct"]])
+        # V_t simplex from syniq_core (already normalized to 1.0)
+        v_vec = [scored["S_t"], scored["A_t"], scored["Q_t"], scored["D_t"], scored["R_t"]]
+        # V6: CAM simplex (CON, ABS, MET) — only meaningful when cam_matched > 0
+        if scored["cam_matched"] > 0:
+            m_vec = normalize_vector([scored["con_pct"], scored["abs_pct"], scored["met_pct"]])
+        else:
+            m_vec = None  # No CAM signal — divergence not meaningful
+
+        row = {
+            # ── Identity & metadata ─────────────────────────────────────
+            "session_id": session_id,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "turn_index": idx,
+            "speaker": speaker,
+            "ai_label": ai_label,
+            "novelty_type": novelty_type,
+            "words": words,
+            # ── IEP top-level ──────────────────────────────────────────
+            "int_pct": scored["int_pct"],
+            "aff_pct": scored["aff_pct"],
+            "act_pct": scored["act_pct"],
+            "int_count": scored["int_count"],
+            "aff_count": scored["aff_count"],
+            "act_count": scored["act_count"],
+            "I": c_vec[0],
+            "E": c_vec[1],
+            "A": c_vec[2],
+            "stance": scored["stance"],
+            "tone": scored["tone"],
+            "iep_dominant": scored["iep_dominant"],
+            "iep_quadrant": scored["iep_quadrant"],
+            "quadrant": quadrant(scored["int_pct"], scored["aff_pct"]),  # V5 idiom preserved
+            # ── V_t simplex ────────────────────────────────────────────
+            "S_t": scored["S_t"],
+            "A_t": scored["A_t"],
+            "Q_t": scored["Q_t"],
+            "D_t": scored["D_t"],
+            "R_t": scored["R_t"],
+            "vt_score_status": scored["vt_score_status"],
+            # ── CAM (V6 NEW) ───────────────────────────────────────────
+            "con_pct":     scored["con_pct"],
+            "abs_pct":     scored["abs_pct"],
+            "met_pct":     scored["met_pct"],
+            "cam_matched": scored["cam_matched"],
+            # ── V50 validated instruments (V6 NEW per turn) ────────────
+            "vader_compound": scored["vader_compound"],
+            "vader_pos":      scored["vader_pos"],
+            "vader_neg":      scored["vader_neg"],
+            "vader_neu":      scored["vader_neu"],
+            "flesch_kincaid": scored["flesch_kincaid"],
+            "flesch_ease":    scored["flesch_ease"],
+            "ttr":            scored["ttr"],
+            "unique_words":   scored["unique_words"],
+            "total_words":    scored["total_words"],
+            # ── Opener and full text ──────────────────────────────────
+            "opener": first_sentence(txt),
+            "text":   txt,
+            # ── Dyadic metrics (filled in below for AI turns) ─────────
+            "pair_index":    None,
+            "delta_C":       None,
+            "delta_V":       None,
+            "delta_M":       None,   # V6 NEW
+            "shift_C_h":     None,
+            "shift_C_ai":    None,
+            "shift_V_h":     None,
+            "shift_V_ai":    None,
+            "shift_M_h":     None,   # V6 NEW
+            "shift_M_ai":    None,   # V6 NEW
+            "synergy_score": None,
+        }
+        # ── 23 IEP subclasses per turn (V6 NEW) ─────────────────────
+        for s in AFF_SUBCLASS_NAMES: row[f"aff_sub_{s}"] = scored[f"aff_sub_{s}"]
+        for s in INT_SUBCLASS_NAMES: row[f"int_sub_{s}"] = scored[f"int_sub_{s}"]
+        for s in ACT_SUBCLASS_NAMES: row[f"act_sub_{s}"] = scored[f"act_sub_{s}"]
+
+        # ── Version stamps (V6 NEW) ─────────────────────────────────
+        row["tool_version"] = "V6.2.1"
+        row["core_version"] = CORE_STAMPS.get("core_version", "")
+        row["iep_dictionary_version"]    = CORE_STAMPS.get("iep_dictionary_version", "")
+        row["subclass_taxonomy_version"] = CORE_STAMPS.get("subclass_taxonomy_version", "")
+        row["vt_engine_version"]         = CORE_STAMPS.get("vt_engine_version", "")
+        row["cam_dictionary_version"]    = CORE_STAMPS.get("cam_dictionary_version", "")
+        row["validated_instruments_version"] = CORE_STAMPS.get("validated_instruments_version", "")
+
+        # ── Dyadic computation ─────────────────────────────────────
+        if speaker == "human":
+            pending_human = {"c": c_vec, "v": v_vec, "m": m_vec, "row_turn_index": idx}
+            row["shift_C_h"] = l1_distance(prev_h_c, c_vec) if prev_h_c is not None else 0.0
+            row["shift_V_h"] = l1_distance(prev_h_v, v_vec) if prev_h_v is not None else 0.0
+            if prev_h_m is not None and m_vec is not None:
+                row["shift_M_h"] = l1_distance(prev_h_m, m_vec)
+            else:
+                row["shift_M_h"] = 0.0
+            prev_h_c, prev_h_v = c_vec, v_vec
+            if m_vec is not None: prev_h_m = m_vec
+        else:
+            row["shift_C_ai"] = l1_distance(prev_ai_c, c_vec) if prev_ai_c is not None else 0.0
+            row["shift_V_ai"] = l1_distance(prev_ai_v, v_vec) if prev_ai_v is not None else 0.0
+            if prev_ai_m is not None and m_vec is not None:
+                row["shift_M_ai"] = l1_distance(prev_ai_m, m_vec)
+            else:
+                row["shift_M_ai"] = 0.0
+
+            if pending_human is not None:
+                pair_index += 1
+                delta_c = l1_distance(pending_human["c"], c_vec)
+                delta_v = l1_distance(pending_human["v"], v_vec)
+                # V6: delta_M only when both turns have CAM signal
+                if pending_human["m"] is not None and m_vec is not None:
+                    delta_m = l1_distance(pending_human["m"], m_vec)
+                else:
+                    delta_m = 0.0  # No CAM signal — treated as zero for synergy
+
+                synergy = compute_synergy_score(
+                    delta_c, delta_v, delta_m, novelty_type,
+                    rows[-1]["shift_C_h"] if rows else 0.0,
+                    row["shift_C_ai"]
+                )
+                row["pair_index"] = pair_index
+                row["delta_C"] = delta_c
+                row["delta_V"] = delta_v
+                row["delta_M"] = delta_m
+                row["synergy_score"] = synergy
+                # Backfill pair-level metrics into the matched human row
+                for back in range(len(rows) - 1, -1, -1):
+                    if rows[back]["turn_index"] == pending_human["row_turn_index"]:
+                        rows[back]["pair_index"] = pair_index
+                        rows[back]["delta_C"] = delta_c
+                        rows[back]["delta_V"] = delta_v
+                        rows[back]["delta_M"] = delta_m
+                        rows[back]["synergy_score"] = synergy
+                        break
+
+            prev_ai_c, prev_ai_v = c_vec, v_vec
+            if m_vec is not None: prev_ai_m = m_vec
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Summaries (preserved from V5, extended with CAM and subclasses)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def summarize_by_speaker(df: pd.DataFrame) -> pd.DataFrame:
+    """V6: extended speaker-summary numerics (CAM, VADER, deltas).
+    V6.2.1: total_words added (sum) alongside per-turn `words` (mean)."""
+    num_cols = [
+        "words","int_pct","aff_pct","act_pct","I","E","A",
+        "S_t","A_t","Q_t","D_t","R_t",
+        "con_pct","abs_pct","met_pct","cam_matched",
+        "vader_compound","flesch_kincaid","ttr",
+        "delta_C","delta_V","delta_M",
+        "shift_C_h","shift_C_ai","shift_V_h","shift_V_ai","shift_M_h","shift_M_ai",
+        "synergy_score",
+    ]
+    out = df.groupby("speaker")[num_cols].mean(numeric_only=True).round(4)
+    out["turns"] = df.groupby("speaker").size()
+    out["total_words"] = df.groupby("speaker")["words"].sum().astype(int)
+    return out.reset_index()
+
+def summarize_combined(df: pd.DataFrame) -> pd.DataFrame:
+    """V6: weighted conversation profile + dyadic means including delta_M.
+    V6.2.1: per-speaker word totals added (human_total_words, ai_total_words)."""
+    if df.empty:
+        return pd.DataFrame()
+
+    total_words = df["words"].sum() or 1
+    human_words = int(df.loc[df["speaker"] == "human", "words"].sum())
+    ai_words    = int(df.loc[df["speaker"] == "ai",    "words"].sum())
+    weighted = {}
+    for col in ["I","E","A","S_t","A_t","Q_t","D_t","R_t","con_pct","abs_pct","met_pct"]:
+        weighted[col] = round((df[col] * df["words"]).sum() / total_words, 4)
+
+    summary = {
+        "total_turns": int(len(df)),
+        "human_turns": int((df["speaker"] == "human").sum()),
+        "ai_turns": int((df["speaker"] == "ai").sum()),
+        "total_words":       int(total_words),
+        "human_total_words": human_words,
+        "ai_total_words":    ai_words,
+        "mean_delta_C": round(df["delta_C"].dropna().mean(), 4) if df["delta_C"].notna().any() else None,
+        "mean_delta_V": round(df["delta_V"].dropna().mean(), 4) if df["delta_V"].notna().any() else None,
+        "mean_delta_M": round(df["delta_M"].dropna().mean(), 4) if df["delta_M"].notna().any() else None,
+        "mean_synergy_score": round(df["synergy_score"].dropna().mean(), 4) if df["synergy_score"].notna().any() else None,
+        "mean_vader_compound": round(df["vader_compound"].dropna().mean(), 4) if df["vader_compound"].notna().any() else None,
+        "mean_flesch_kincaid": round(df["flesch_kincaid"].dropna().mean(), 4) if df["flesch_kincaid"].notna().any() else None,
+        "mean_cam_matched":    round(df["cam_matched"].dropna().mean(), 1) if df["cam_matched"].notna().any() else None,
+    }
+    summary.update(weighted)
+    return pd.DataFrame([summary])
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UI
+# ──────────────────────────────────────────────────────────────────────────────
+
+st.set_page_config(page_title="SYN-IQ Transcript Scorer v6.2", layout="wide")
+st.title("🔬 SYN-IQ Transcript Scorer v6.2")
+st.markdown(
+    f"**Scores HUMAN, AI, and COMBINED conversation layers in one tool.** "
+    f"Powered by `syniq_core` v{CORE_VERSION} — IEP + V_t + CAM + V50 instruments. "
+    f"V6.2 adds timestamp-segmented parsing and auto-detect dispatch — fixes "
+    f"turn fragmentation on label-less Claude.ai docx exports."
+)
+
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    session_id = st.text_input("Session ID", value="session_01")
+with c2:
+    ai_label = st.selectbox("AI Label", ["Claude", "ChatGPT", "Grok", "Gemini", "Other"])
+with c3:
+    novelty_type = st.selectbox("Novelty Type", list(_NOVELTY_WEIGHTS.keys()), index=0)
+with c4:
+    parse_mode = st.selectbox(
+        "Parse Mode",
+        ["Auto-detect", "Auto alternating", "Speaker-labeled transcript",
+         "Timestamp-segmented", "Upload CSV"],
+        index=0,
+        help=(
+            "Auto-detect (recommended): probes the input for speaker labels "
+            "and timestamps, routes to the right parser. The explicit modes "
+            "are escape hatches for cases where the heuristic guesses wrong."
+        ),
+    )
+
+st.divider()
+
+turn_df = pd.DataFrame()
+if parse_mode in ("Auto-detect", "Auto alternating", "Speaker-labeled transcript",
+                  "Timestamp-segmented"):
+    first_speaker = st.selectbox("First speaker (for auto/timestamp modes)",
+                                 ["human", "ai"], index=0)
+    raw_text = st.text_area("Paste transcript here", height=280,
+                            placeholder="Paste the conversation block here...")
+    if st.button("Parse + Score", type="primary"):
+        if raw_text.strip():
+            if parse_mode == "Auto-detect":
+                turns, detected_fmt = parse_auto(raw_text, first_speaker=first_speaker)
+                st.info(f"Auto-detect routed input as **{detected_fmt}** — "
+                        f"used `parse_{detected_fmt}_transcript`"
+                        if detected_fmt != 'timestamped'
+                        else f"Auto-detect routed input as **timestamped** — "
+                             f"used `parse_timestamp_segmented`")
+            elif parse_mode == "Auto alternating":
+                turns = parse_alternating_transcript(raw_text, first_speaker=first_speaker)
+            elif parse_mode == "Speaker-labeled transcript":
+                turns = parse_labeled_transcript(raw_text)
+            else:  # Timestamp-segmented
+                turns = parse_timestamp_segmented(raw_text, first_speaker=first_speaker)
+            turn_df = score_turns(turns, novelty_type, session_id, ai_label)
+        else:
+            st.warning("Paste a transcript first.")
+else:
+    uploaded = st.file_uploader("Upload CSV", type=["csv"])
+    if st.button("Load CSV + Score", type="primary"):
+        if uploaded is not None:
+            df_in = parse_uploaded_csv(uploaded)
+            turns = df_in.to_dict(orient="records")
+            turn_df = score_turns(turns, novelty_type, session_id, ai_label)
+        else:
+            st.warning("Upload a CSV first.")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Output
+# ──────────────────────────────────────────────────────────────────────────────
+
+if not turn_df.empty:
+    st.success(f"Scored {len(turn_df)} turns.")
+
+    # Curated turn-level display columns (keep the table readable)
+    st.subheader("Turn-Level Scores")
+    display_cols = [
+        "turn_index","speaker","words","opener",
+        "int_pct","aff_pct","act_pct","quadrant",
+        "S_t","A_t","Q_t","D_t","R_t",
+        "con_pct","abs_pct","met_pct","cam_matched",
+        "vader_compound","flesch_kincaid","ttr",
+        "pair_index","delta_C","delta_V","delta_M","synergy_score",
+    ]
+    display_cols = [c for c in display_cols if c in turn_df.columns]
+    st.dataframe(turn_df[display_cols], use_container_width=True)
+
+    st.subheader("Human / AI Summary")
+    speaker_summary = summarize_by_speaker(turn_df)
+    st.dataframe(speaker_summary, use_container_width=True)
+
+    st.subheader("Combined Conversation Summary")
+    combined_summary = summarize_combined(turn_df)
+    st.dataframe(combined_summary, use_container_width=True)
+
+    # ── Dyadic trajectory glimpse ────────────────────────────────
+    st.subheader("Dyadic Trajectory")
+    pair_df = turn_df[turn_df["pair_index"].notna()].copy()
+    if not pair_df.empty:
+        d1, d2, d3, d4 = st.columns(4)
+        with d1:
+            st.metric("Mean ΔCₜ (IEP divergence)",
+                      f"{pair_df['delta_C'].mean():.3f}")
+        with d2:
+            st.metric("Mean ΔV̂ₜ (V_t divergence)",
+                      f"{pair_df['delta_V'].mean():.3f}")
+        with d3:
+            st.metric("Mean ΔM (CAM divergence)",
+                      f"{pair_df['delta_M'].mean():.3f}")
+        with d4:
+            st.metric("Mean synergy score",
+                      f"{pair_df['synergy_score'].mean():.3f}")
+
+        chart_df = pair_df.set_index("pair_index")[["delta_C","delta_V","delta_M","synergy_score"]]
+        st.line_chart(chart_df, height=300)
+    else:
+        st.info("No HUMAN→AI pairs detected — dyadic trajectory unavailable.")
+
+    # ── Version stamps display (V6) ──────────────────────────────
+    with st.expander("🏷️ Version stamps (canonical scoring regime)"):
+        stamps = {k: turn_df.iloc[0].get(k, "?") for k in [
+            "tool_version","core_version","iep_dictionary_version",
+            "subclass_taxonomy_version","vt_engine_version",
+            "cam_dictionary_version","validated_instruments_version"
+        ]}
+        st.json(stamps)
+
+    # ── CSV exports ──────────────────────────────────────────────
+    st.subheader("Download")
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        csv_turns = turn_df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Turn-level CSV", csv_turns,
+                           file_name=f"transcript_v6_2_{session_id}_turns.csv", mime="text/csv")
+    with e2:
+        csv_speaker = speaker_summary.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Speaker summary CSV", csv_speaker,
+                           file_name=f"transcript_v6_2_{session_id}_speaker.csv", mime="text/csv")
+    with e3:
+        csv_combined = combined_summary.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Combined summary CSV", csv_combined,
+                           file_name=f"transcript_v6_2_{session_id}_combined.csv", mime="text/csv")
+
+st.markdown("---")
+st.caption(
+    f"SYN-IQ Transcript Scorer v6.2 · syniq_core v{CORE_VERSION} · "
+    "IEP (V50_1897) + V_t (simplex_nocap) + CAM (V3_selfmodel) + V50 instruments · "
+    "SYNINT Team · May 2026"
+)
