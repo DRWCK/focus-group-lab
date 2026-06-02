@@ -960,6 +960,8 @@ def analyze_text(text: str) -> Dict:
             "ttr": 0.0, "unique_words": 0,
             # V52 NEW: CAM zeros
             "con_pct": 0.0, "abs_pct": 0.0, "met_pct": 0.0, "cam_matched": 0,
+            # V56 fix: IEP rollup labels (empty-text defaults)
+            "iep_dominant": "", "iep_stance": "", "iep_tone": "", "iep_quadrant": "",
         }
         for s in AFF_SUBCLASS_NAMES:
             base[f"aff_sub_{s.lower()}"] = 0.0
@@ -1002,6 +1004,12 @@ def analyze_text(text: str) -> Dict:
         "int_pct":       iep["int"],
         "aff_pct":       iep["aff"],
         "act_pct":       iep["act"],
+        # V56 fix: IEP rollup labels — core computes these but V55 dropped them
+        # at the analyze_text boundary, so the export advertised empty columns.
+        "iep_dominant":  iep.get("dominant", ""),
+        "iep_stance":    iep.get("stance", ""),
+        "iep_tone":      iep.get("tone", ""),
+        "iep_quadrant":  iep.get("quadrant", ""),
         # V51 NRC emotion scoring — preserved unchanged
         "emotion_count_nrc": emotion_count,
         "emotion_pct_nrc":   emotion_pct,
@@ -2164,7 +2172,18 @@ if st.session_state.running:
             result[f"int_sub_{s.lower()}"] = analysis.get(f"int_sub_{s.lower()}", 0.0)
         for s in ACT_SUBCLASS_NAMES:
             result[f"act_sub_{s.lower()}"] = analysis.get(f"act_sub_{s.lower()}", 0.0)
-        
+
+        # V56 fix: carry through columns analyze_text produces but the run-loop
+        # row previously dropped. Without this, score_attachment ran every turn
+        # and was discarded, and the IEP rollup labels never reached the CSV —
+        # the export's "only columns that exist" filter then silently omitted
+        # all of them. Sourcing from `analysis` keeps a single scoring path.
+        for k in ("iep_corr_int", "iep_corr_aff", "iep_corr_act",
+                  "iep_uncertainty", "iep_signal_strength", "iep_act",
+                  "attachment_version",
+                  "iep_dominant", "iep_stance", "iep_tone", "iep_quadrant"):
+            result[k] = analysis.get(k)
+
         st.session_state.results.append(result)
         st.session_state.current_idx += 1
         
@@ -2616,7 +2635,6 @@ if st.session_state.results:
         "act_sub_achievement", "act_sub_phenomenological",
         # V_t voice-state (4-simplex)
         "S_t", "A_t", "Q_t", "D_t", "R_t",
-        "vt_S", "vt_A", "vt_Q", "vt_D", "vt_R", "vt_score_status",
         # CAM (2-simplex)
         "con_pct", "abs_pct", "met_pct", "cam_matched",
         # Style / lens
@@ -2625,7 +2643,7 @@ if st.session_state.results:
         "vader_compound", "vader_pos", "vader_neg", "vader_neu",
         "flesch_kincaid", "flesch_ease", "ttr", "unique_words",
         # Provenance (V53)
-        "core_version", "iep_dictionary_version", "vt_dictionary_version",
+        "core_version", "iep_dictionary_version",
         "cam_dictionary_version",
         # Act-corrected IEP attachment (experimental, parallel to word-only)
         "iep_corr_int", "iep_corr_aff", "iep_corr_act",
