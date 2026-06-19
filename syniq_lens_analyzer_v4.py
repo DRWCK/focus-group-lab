@@ -13,6 +13,11 @@ import numpy as np
 import io
 import datetime
 import itertools
+def _f(v):
+    try:
+        return f"{float(v):.3f}"
+    except (TypeError, ValueError):
+        return "?"
 
 st.set_page_config(
     page_title="SYN-IQ · Vₜ Lens Analyzer v4",
@@ -451,13 +456,12 @@ else:
             f"DATASET: {len(df)} responses · Conditions: {', '.join(conditions)} · Agents: {', '.join(agents) if agents else 'unknown'}",
             "",
             "CONDITION PROFILES (mean IEP + Vₜ scores):",
-        ]
+    
         for row in profile_rows:
             cond = row["Condition"]
             summary_lines.append(
-                f"  {cond} (N={row['N']}): INT={row.get('int_pct','?'):.3f} AFF={row.get('aff_pct','?'):.3f} ACT={row.get('act_pct','?'):.3f} | "
-                f"S_t={row.get('S_t','?'):.3f} A_t={row.get('A_t','?'):.3f} Q_t={row.get('Q_t','?'):.3f} D_t={row.get('D_t','?'):.3f} R_t={row.get('R_t','?'):.3f}"
-            )
+           f"  {cond} (N={row['N']}): INT={_f(row.get('int_pct'))} AFF={_f(row.get('aff_pct'))} ACT={_f(row.get('act_pct'))} | "
+                f"S_t={_f(row.get('S_t'))} A_t={_f(row.get('A_t'))} Q_t={_f(row.get('Q_t'))} D_t={_f(row.get('D_t'))} R_t={_f(row.get('R_t'))}"
 
         if lens_rows:
             summary_lines += ["", "1D LENS SEPARATIONS (sorted by Cohen's d effect size):"]
