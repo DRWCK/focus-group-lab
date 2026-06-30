@@ -22,3 +22,4 @@ pillow
 spacy>=3.7,<3.9
 # model installs automatically on first run, or pin it explicitly:
 # python -m spacy download en_core_web_sm
+wordcloud
