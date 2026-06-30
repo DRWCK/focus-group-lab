@@ -102,6 +102,24 @@ def process_cell(df, question, temp, mode, topn, universe):
 
 # ---------------------------------------------------------------------------
 st.set_page_config(page_title="SYN-IQ Word List", layout="wide")
+
+# --- password gate -------------------------------------------------------
+# NOTE: this controls access to the running app only. Anyone who has this
+# .py file can read the password below in plain text. Not file-level security.
+APP_PASSWORD = "SYNIQ2026"
+
+if not st.session_state.get("authed", False):
+    st.title("SYN-IQ — Word List")
+    pw = st.text_input("Password", type="password")
+    if st.button("Enter"):
+        if pw == APP_PASSWORD:
+            st.session_state["authed"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    st.stop()
+# -------------------------------------------------------------------------
+
 st.title("SYN-IQ — Per-Agent Distinctive Word List")
 st.caption("Drop in a pooled response CSV, pick a question + temperature, read off each "
            "agent's driving words. This is the data behind the clouds.")
