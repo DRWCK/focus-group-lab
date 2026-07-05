@@ -229,7 +229,7 @@ CONFIG = {
 
 # Model strings — EXACT model names for reproducibility
 MODEL_STRINGS = {
-    "Claude": "claude-sonnet-4-20250514",
+    "Claude": "claude-sonnet-5",
     "ChatGPT": "gpt-4o",
     "Grok": "grok-3-latest",
     "Gemini": "gemini-2.5-flash",   # V56.1: gemini-2.0-flash shut down 2026-06-01 (404). 2.5-flash = stable GA successor, same workhorse tier.
