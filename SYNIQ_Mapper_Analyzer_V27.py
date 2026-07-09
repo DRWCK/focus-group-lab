@@ -1666,37 +1666,45 @@ def render_plotly_agent_view(graph, df, valid_indices,
         pin_report = []      # list of dicts for the text panel below the figure
         pin_missing = []     # (run, agent) that were expected but absent
         if pin_runs and has_agent and ('run' in subset.columns):
-            runs_col = subset['run'].values
-            # stagger arrow heights when two runs are pinned so labels don't collide
-            y_levels = {r: (0.72 if k % 2 == 0 else 0.92)
-                        for k, r in enumerate(pin_runs)}
-            all_agents = sorted(set(agents))
-            for r in pin_runs:
-                for ag in all_agents:
-                    sel = np.where((runs_col == r) & (agents == ag))[0]
-                    if len(sel) == 0:
-                        pin_missing.append((r, ag))
-                        continue
-                    idx = sel[0]
-                    xpos = float(x[idx])
-                    ypin = y_levels[r]
-                    fig.add_annotation(
-                        x=xpos, y=y[idx],
-                        ax=xpos, ay=ypin, ayref='y', axref='x',
-                        text=f"{ag} · run {r}",
-                        showarrow=True, arrowhead=2, arrowsize=1.2,
-                        arrowwidth=1.6, arrowcolor=get_agent_color(ag),
-                        font=dict(size=10, color=get_agent_color(ag)),
-                        bgcolor='rgba(255,255,255,0.85)', bordercolor=get_agent_color(ag),
-                        borderwidth=1,
-                    )
-                    row = subset.iloc[idx]
-                    pin_report.append({
-                        'run': r, 'agent': ag, 'pca1': round(xpos, 3),
-                        'question': row.get('question_id', row.get('question_label', '')),
-                        'total_words': row.get('total_words', ''),
-                        'response_text': str(row.get('response_text', '')),
-                    })
+            try:
+                runs_col = subset['run'].values
+                all_agents = sorted(set(agents))
+                for k, r in enumerate(pin_runs):
+                    for ag in all_agents:
+                        sel = np.where((runs_col == r) & (agents == ag))[0]
+                        if len(sel) == 0:
+                            pin_missing.append((r, ag))
+                            continue
+                        idx = int(sel[0])
+                        xpos = float(x[idx])
+                        ypos = float(y[idx])
+                        acolor = get_agent_color(ag)
+                        # Version-safe annotation: arrow points to the data
+                        # point; label offset upward in PIXELS (ay negative),
+                        # no cross-axis refs. Second pinned run offset further.
+                        fig.add_annotation(
+                            x=xpos, y=ypos,
+                            text=f"{ag} · run {r}",
+                            showarrow=True, arrowhead=2, arrowsize=1.2,
+                            arrowwidth=1.6, arrowcolor=acolor,
+                            ax=0, ay=(-45 if k == 0 else -80),
+                            font=dict(size=10, color=acolor),
+                            bgcolor='rgba(255,255,255,0.85)',
+                            bordercolor=acolor, borderwidth=1,
+                        )
+                        row = subset.iloc[idx]
+                        pin_report.append({
+                            'run': r, 'agent': ag, 'pca1': round(xpos, 3),
+                            'question': row.get('question_id', row.get('question_label', '')),
+                            'total_words': row.get('total_words', ''),
+                            'response_text': str(row.get('response_text', '')),
+                        })
+            except Exception as _pin_e:
+                # A pin failure must never take the strip down.
+                st.warning(f"Pin overlay skipped ({type(_pin_e).__name__}: {_pin_e}). "
+                           "Strip shown without pins.")
+                pin_report = []
+                pin_missing = []
         # stash for the caller to render the text panel + methods note
         st.session_state['_pin_report'] = pin_report
         st.session_state['_pin_missing'] = pin_missing
