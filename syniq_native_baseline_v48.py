@@ -63,7 +63,7 @@ CONFIG = {
 
 # Model strings — EXACT model names for reproducibility
 MODEL_STRINGS = {
-    "Claude": "claude-sonnet-4-20250514",
+    "Claude": "claude-sonnet-5",
     "Sophia": "gpt-4o",
     "Grok": "grok-3-latest",
     "Gemini": "gemini-2.0-flash",
