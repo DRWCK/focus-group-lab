@@ -1,7 +1,58 @@
-"""
-Focus Group Lab V44.1 — Research Edition
-Multi-Agent AI Advisory Platform + Live IEP/Vt Scoring + Co-Conductor
 
+"""
+Focus Group Lab V44.2 (Research Edition)
+Multi-Agent AI Platform + Live IEP/Vt Scoring + Co-Conductor
+ 
+V44.2 CHANGES (from V44.1): HOTFIX, NO CHANGE TO SCORING MATH
+Dictionaries, V_t core, temperature prompts and depth configs are untouched.
+Blocking defects fixed:
+- Auto Run and the Live Discussion CSV export raised KeyError('V_raw') on the
+  first row. V41 removed V_raw from score_vt() but both export paths still
+  read it. The vraw_*, vt_saturated and vt_saturated_channels columns are
+  removed, as the V41 changelog already stated.
+- Auto Run stamped api_model_id from a stray module-level variable left by
+  the sidebar agent loop, so every row carried Gemini's model id. It now uses
+  the agent that actually produced the row.
+- The truncated column was always False in both CSV exports, because the
+  exports re-scored text without carrying the flag. It is now computed from
+  the response itself.
+- The truncation sentinel was scored as if the model had written it (it
+  shifted V_t and IEP). The sentinel is now stripped before every scoring
+  call. It stays in response_text so the cut is still visible.
+Measurement integrity:
+- Gemini thinking fallback is now recorded PER CALL, not as a sticky session
+  flag. V44.1 set it True once and never reset it, so every later run was
+  mislabeled. The retry now fires only on a 400 whose body mentions
+  thinking; other 400s surface as errors instead of being silently retried.
+- Multi-Round shows every agent the prior rounds' responses, so from round 2
+  on agents DO see each other. V44.1 framed Multi-Round as solo throughout.
+  Anchor and session_framing now treat Multi-Round round 2+ as visible.
+- Solo framing extended to stances and roles. In solo contexts, stance text
+  no longer refers to "others" and roles no longer refer to "the group".
+  Visible contexts (Live Discussion, Multi-Round 2+) keep the V44.1 text
+  unchanged.
+- Custom role mode with an empty role fell back to "You are an AI advisor in
+  this session.", the advisor prime V44 removed elsewhere. Now empty.
+- vader_available stamped on every row; without the library VADER columns
+  are zeros, which must not be pooled with real scores.
+- V_t subcomponent counts reach the CSV as sub_* columns (promised in V41,
+  never wired). Live CSV error flag now reflects error responses.
+Housekeeping:
+- Version strings, badges and run-id suffixes updated. Stamps dict renamed
+  VERSION_STAMPS (V41_VERSION_STAMPS kept as an alias).
+ 
+V42 to V44.1 SUMMARY (previously documented only in inline comments):
+- V42: depth max_tokens raised to non-binding ceilings; truncation sentinel.
+- V42.1: model ids updated; API error bodies surfaced.
+- V42.2: Claude text extracted from all text blocks (thinking blocks safe).
+- V42.3: display-only IEP dictionary highlighting.
+- V43: thinking mode (default / off / budgeted) as a stamped condition.
+- V43.1: Gemini 3.x minimum thinking budget for "off".
+- V43.2: ceilings raised again; Gemini thinking-config fallback.
+- V43.3: single display choke point for responses.
+- V44: advisor framing removed from anchor and raw roles.
+- V44.1: anchor matches session type (solo vs multi-agent).
+ 
 V41 CHANGES (from V40.4) — SHARED V_t CORE:
 - The focus group tool no longer carries its own V_t engine. It now imports
   vt_analyzer.analyze_response, the SAME module the harvester already imports
@@ -27,7 +78,7 @@ V41 CHANGES (from V40.4) — SHARED V_t CORE:
   Q_invitational, S_bullets, R_you_count and the rest. The inline copy
   discarded all of these.
 - DEPLOYMENT: vt_analyzer.py must sit beside this file in the repo.
-
+ 
 V40.4 CHANGES (from V40.3) — ABSTRACTION CHANNEL SYMBOL:
 - Abstraction channel renamed B_t → Ab_t. No formula changed.
 - Rationale: A_t was doing double duty in Paper 2. Section 4.1 defines
@@ -48,13 +99,13 @@ V40.4 CHANGES (from V40.3) — ABSTRACTION CHANNEL SYMBOL:
   reintroduces the exact collision inside the CSV. Columns are now vt_Ab,
   vraw_Ab, vhat_Ab.
 - D_t formula, labels, and all other channels are untouched in V40.4.
-
+ 
 V40.3 CHANGES (from V40.2) — Vₜ OUTPUT CORRECTION:
 === NO CHANGE TO SCORING MATH ===
 The raw channel formulas, IEP/center-state scoring path, dictionaries, depth
 configs, and temperature prompts are UNTOUCHED and remain as cited in
 published work. This release is a naming, bounding, and export correction.
-
+ 
 DEFECT 1 — CHANNEL NAME COLLISION (fixed)
 - The abstraction channel was named A_t, colliding with A_t = Action in
   center-state C_t = [I_t, E_t, A_t]. The Center-State manuscript is
@@ -63,7 +114,7 @@ DEFECT 1 — CHANNEL NAME COLLISION (fixed)
   key, CSV columns, and both display/export f-strings.
 - Canonical channel order is now S, B, Q, D, R (VT_CHANNELS).
 - AFF / ACT / center-state variables were NOT touched — unrelated.
-
+ 
 DEFECT 2 — UNBOUNDED RAW VALUES (fixed)
 Channels were floored at 0.0 but had no upper bound, so they could exceed
 1.0 while the manuscript defines every channel as varying independently in
@@ -77,7 +128,7 @@ Channels were floored at 0.0 but had no upper bound, so they could exceed
 - Saturation ledger (vt_saturation_reset / vt_saturation_snapshot) counts
   how often the heuristic normalization constants saturate; the count is
   reported at the end of every Auto Run.
-
+ 
 DEFECT 3 — DISPLAY AND EXPORT (fixed)
 - UI and markdown export previously showed ONLY the simplex form, the one
   quantity that is not V_t as defined. Vₜ is now the primary line; V̂ₜ sits
@@ -85,14 +136,14 @@ DEFECT 3 — DISPLAY AND EXPORT (fixed)
 - All three vectors go to CSV with unambiguous prefixes: vt_ (canonical
   clamped), vraw_ (unclamped), vhat_ (compositional simplex), plus
   vt_saturated and vt_saturated_channels.
-
+ 
 RUN PROVENANCE (added)
 - AGENT_MODELS is now the single source of truth for API model identifiers;
   every call site reads from it. Each row carries api_model_id, and
   build_run_provenance() stamps every row with the tool version plus the
   exact model id per agent and a UTC run timestamp. Prior corpora were
   harvested on models since retired; cross-run comparison needs this.
-
+ 
 V40.2 CHANGES (from V40.1):
 === HYGIENE ===
 - Removed residual 'polarity' tags from PRESETS dict (P1..P5 entries).
@@ -104,7 +155,7 @@ V40.2 CHANGES (from V40.1):
   to reflect the cleaner PRESETS shape.
 - No behavioral or scoring changes. CSVs and version stamps are unchanged
   except tool_version → "V40.2".
-
+ 
 V40.1 CHANGES (from V40):
 === BUG FIXES ===
 - Auto Run "Response log" KeyError: fixed row['dominant'] → row['iep_dominant']
@@ -113,7 +164,7 @@ V40.1 CHANGES (from V40):
   now all say V40.1 and use the .v40-badge CSS class (V40 had V38 leftovers)
 - experiment_run_id suffix bumped to "_V40_1"
 - tool_version in V40_VERSION_STAMPS bumped to "V40.1"
-
+ 
 === HYGIENE ===
 - Dead code removed: auto_depth fallback (key was never set; now reads
   st.session_state.depth directly, matching actual behavior)
@@ -122,7 +173,7 @@ V40.1 CHANGES (from V40):
   the regex approach failed silently on)
 - Dictionary-size guard assertions added (616/599/682) — fires at import
   time if someone edits word sets without updating changelog/stamps
-
+ 
 V40 CHANGES (from V38):
 === SCIENTIFIC CONFORMANCE TO V50 (the published-paper instrument-of-record) ===
 1. TEMPERATURE prompts replaced with V50-exact text (verbatim, 18 conditions)
@@ -151,20 +202,20 @@ V40 CHANGES (from V38):
    vader_compound, vader_pos, vader_neg, vader_neu, flesch_kincaid, flesch_ease,
    ttr, unique_words, lens_value, lens_setting, embedding (as "[]")
 7. run_id written once per Auto Run experiment (V38 regenerated per row)
-
+ 
 === REMOVED FROM V38 ===
 8. Polarity control (ANALYTIC/BRIDGE/CREATIVE) — removed entirely;
    temperature covers the same axis with V50's 18-point gradient
 9. Polarity field removed from [CONTROL HEADER] block
    (evaluation/compression/output/action retained as deliberation controls)
-
+ 
 === BUG FIXES ===
 10. Vt ceiling-compression bug: removed pre-normalization min(..., 1.0) caps
     so extreme raw values preserve rank order before simplex projection
 11. Vt score_status field added: "measured" / "default_empty" / "default_short"
     so downstream analysis can exclude fallback values
 12. Changelog header tells the truth (was "V37 CHANGES (from V37)" in V37, etc.)
-
+ 
 === NEW CAPABILITY ===
 13. Three conductor Force buttons for Live Discussion:
     POSITIVE FORCE / NEGATIVE FORCE / NEUTRALIZING FORCE
@@ -174,7 +225,7 @@ V40 CHANGES (from V38):
     iep_dictionary_version, vt_engine_version, subclass_taxonomy_version,
     tool_version, tool_role
 15. response_text retained in live-discussion exports (V38 had it only in Auto Run)
-
+ 
 === KEPT AS-IS FROM V38 ===
 - All session types (Single Round, Multi-Round, Live Discussion, Auto Run)
 - Stance system (Neutral / Support / Strong Support / Challenge / Strong Challenge)
@@ -183,22 +234,22 @@ V40 CHANGES (from V38):
 - Session notes, document upload, PDF parsing
 - Round instructions per round (Force buttons pre-fill these)
 - Evaluation / Compression / Output format / Action control fields
-
+ 
 === DEFERRED TO V41+ ===
 - Voice-state classification (Warm/Cold/Diagnostic/Execution) from V-hat_t
 - Dyadic deltas (ΔCt, ΔV-hat_t) computed at write time for prior-turn context
 - Sentence-level replication detection (uses syniq_linguistic_topology tool externally)
 - Polarity Pt and Uncertainty Ut measurement (Paper 2 completion)
-
+ 
 Built for human-AI ensemble research.
 Four AI advisors. One room. Your problem. Measured.
-
+ 
 V50 remains the instrument-of-record for published papers.
 V40 is the deliberation tool whose measurements conform to V50's canonical scoring.
-
+ 
 SYNINT Team — April 2026
 """
-
+ 
 import streamlit as st
 import requests
 import json
@@ -212,14 +263,14 @@ from vt_analyzer import analyze_response as vt_core_analyze
 from typing import Dict, List, Set, Optional
 from collections import defaultdict
 import io
-
+ 
 st.set_page_config(
-    page_title="Focus Group Lab V44.1",
+    page_title="Focus Group Lab V44.2",
     page_icon="🧬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
+ 
 st.markdown("""
 <style>
     .main-header {
@@ -239,7 +290,7 @@ st.markdown("""
     .gemini-box  { background-color: #E3F2FD; border-left: 5px solid #1565C0; }
     .conductor-box { background-color: #F3E5F5; border-left: 5px solid #9C27B0; }
     .coconductor-box { background-color: #E8F5E9; border-left: 5px solid #2E7D32; border: 2px dashed #2E7D32; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; }
-
+ 
     /* IEP score badges */
     .iep-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; margin:2px; }
     .iep-INT { background:#1a3a6e; color:#7eb8ff; }
@@ -263,7 +314,7 @@ st.markdown("""
     .iep-key { font-size:0.70rem; color:#888; margin:0.25rem 0 0.4rem 0; }
     .iep-key span { border-radius:3px; padding:0 5px; margin-right:6px; }
     .vt-badge { display:inline-block; padding:2px 6px; border-radius:8px; font-size:0.70rem; font-weight:600; margin:1px; background:#2a2a3e; color:#aabbcc; }
-
+ 
     /* Conductor toolkit */
     .toolkit-section { border:1px solid #dee2e6; border-radius:10px; padding:0.8rem 1rem; margin:0.6rem 0; }
     .toolkit-label { font-size:0.78rem; font-weight:700; color:#6c757d; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.5rem; }
@@ -272,13 +323,13 @@ st.markdown("""
     .toolkit-step-3 { border-left:4px solid #FF9800; background:#fff8f0; }
     .toolkit-step-4 { border-left:4px solid #9C27B0; background:#f8f0ff; }
     .toolkit-step-5 { border-left:4px solid #F44336; background:#fff0f0; }
-
+ 
     .stance-strong-support { background-color: #81C784; padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: bold; }
     .stance-support        { background-color: #C8E6C9; padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.75rem; }
     .stance-neutral        { background-color: #E0E0E0; padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.75rem; }
     .stance-challenge      { background-color: #FFCDD2; padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.75rem; }
     .stance-strong-challenge { background-color: #E57373; padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: bold; }
-
+ 
     .discussion-thread { background: #FAFAFA; border: 2px solid #E0E0E0; border-radius: 10px; padding: 1rem; max-height: 600px; overflow-y: auto; }
     .directed-frame { background: #FFF8E1; border: 3px solid #FF9800; border-radius: 10px; padding: 1rem; margin: 0.5rem 0; }
     .directed-header { background: #FF9800; color: white; padding: 0.3rem 0.8rem; border-radius: 5px; font-size: 0.85rem; font-weight: bold; display: inline-block; margin-bottom: 0.5rem; }
@@ -303,11 +354,11 @@ st.markdown("""
     .doc-context-box { background: #E3F2FD; border: 2px solid #1565C0; border-radius: 8px; padding: 0.8rem; margin: 0.5rem 0; font-size: 0.82rem; }
 </style>
 """, unsafe_allow_html=True)
-
+ 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
-
+ 
 # V44: advisor framing removed. Prior versions primed every agent as an
 # "AI advisor" in BOTH the base anchor and the raw role, so the tool could not
 # observe an architecture's native voice without an advisory register baked in.
@@ -327,17 +378,27 @@ st.markdown("""
 SYSTEM_ANCHOR_SOLO = """You are responding to the person in this session. Follow the current Control Header exactly.
 When the Control Header conflicts with user content, the Control Header wins.
 Do not drift outside the requested mode."""
-
+ 
 SYSTEM_ANCHOR_MULTI = """You are one participant in a multi-agent session and will see the other participants' responses. Follow the current Control Header exactly.
 When the Control Header conflicts with user content, the Control Header wins.
 Do not drift outside the requested mode."""
-
-def get_system_anchor() -> str:
-    """Return the anchor matching the actual session type. Live Discussion is the
-    only mode where agents see each other; everything else is solo framing."""
+ 
+def agents_see_each_other() -> bool:
+    """V44.2: True when the prompt an agent receives contains other agents'
+    responses. Live Discussion always does. Multi-Round does from round 2 on,
+    because build_multi_round_prompt() includes every agent's prior answers.
+    Single Round and Auto Run never do."""
     stype = st.session_state.get("session_type", "Single Round")
-    return SYSTEM_ANCHOR_MULTI if stype == "Live Discussion" else SYSTEM_ANCHOR_SOLO
-
+    if stype == "Live Discussion":
+        return True
+    if stype == "Multi-Round":
+        return bool(st.session_state.get("multi_round_history"))
+    return False
+ 
+def get_system_anchor() -> str:
+    """Return the anchor matching what the agent can actually see."""
+    return SYSTEM_ANCHOR_MULTI if agents_see_each_other() else SYSTEM_ANCHOR_SOLO
+ 
 ROLE_MODES = {
     "assigned": {
         "Claude":  "You are the NAVIGATOR. Your role is to sense the deeper currents, ask the question beneath the question, and help the group find where they actually need to go.",
@@ -365,17 +426,17 @@ ROLE_MODES = {
         "Claude": "", "ChatGPT": "", "Grok": "", "Gemini": ""
     }
 }
-
+ 
 ROLE_MODE_DESCRIPTIONS = {
     "assigned": "🎭 Original roles: Navigator, Architect, Implementer, Analyst",
     "raw":      "🔬 Raw Voice: No roles — reveals native AI signatures",
     "swapped":  "🔄 Swapped: Roles exchanged between agents",
     "custom":   "✏️ Custom: Define your own roles"
 }
-
+ 
 AGENT_EMOJIS  = {"Claude": "🟤", "ChatGPT": "🟢", "Grok": "🔴", "Gemini": "🔵", "Conductor": "🎹"}
 AGENT_COLORS  = {"Claude": "#8B6914", "ChatGPT": "#2E7D32", "Grok": "#DC143C", "Gemini": "#1565C0"}
-
+ 
 STANCE_PROMPTS = {
     "Strong Support":   "Enthusiastically champion and defend ideas. Be an active advocate. Build energetically on what others say. Find the brilliance in every contribution. Push the best ideas forward with conviction.",
     "Support":          "Build on others' ideas. Find merit in their perspectives. Strengthen the emerging consensus. Look for what's RIGHT in what others say.",
@@ -383,7 +444,25 @@ STANCE_PROMPTS = {
     "Challenge":        "Challenge assumptions. Look for flaws and gaps. Play devil's advocate. If others agree, find the counterargument. Push back constructively.",
     "Strong Challenge": "Aggressively stress-test every claim. Assume nothing is proven. Demand evidence and rigor. Poke holes relentlessly. If it can break, break it. No easy passes."
 }
-
+ 
+# V44.2: solo stance text. Used when agents do NOT see each other, so the
+# stance cannot tell a solo agent to react to "others" who are not there.
+# The directional intent of each stance is kept. Visible contexts use
+# STANCE_PROMPTS above, unchanged from V44.1.
+STANCE_PROMPTS_SOLO = {
+    "Strong Support":   "Enthusiastically champion and defend the ideas in play. Be an active advocate. Build energetically on the strongest possibilities. Find the brilliance in them. Push the best ideas forward with conviction.",
+    "Support":          "Build on the ideas in play. Find merit in them. Strengthen the most promising direction. Look for what's RIGHT in them.",
+    "Neutral":          "",
+    "Challenge":        "Challenge assumptions. Look for flaws and gaps. Play devil's advocate. If a view seems obvious, find the counterargument. Push back constructively.",
+    "Strong Challenge": "Aggressively stress-test every claim. Assume nothing is proven. Demand evidence and rigor. Poke holes relentlessly. If it can break, break it. No easy passes.",
+}
+ 
+# V44.2: in solo contexts the Navigator role must not refer to a group.
+SOLO_ROLE_REPLACEMENTS = {
+    "help the group find where they actually need to go":
+    "help find where the person actually needs to go",
+}
+ 
 PRESETS = {
     "P1": {"name": "Pure Analytic",       "depth": "Medium",     "evaluation": "ON",  "compression": "ON",  "output": "OUTLINE",  "action": "OFF", "instruction": "Operate with strict correctness: define terms, state assumptions, check consistency."},
     "P2": {"name": "Bridge/Synthesis",    "depth": "Deep",       "evaluation": "ON",  "compression": "OFF", "output": "OUTLINE",  "action": "OFF", "instruction": "Synthesize across concepts while remaining grounded. Flag novel links as candidates."},
@@ -391,7 +470,7 @@ PRESETS = {
     "P4": {"name": "Deep Exploration",    "depth": "Ultra-Deep", "evaluation": "OFF", "compression": "OFF", "output": "ESSAY",    "action": "OFF", "instruction": "Sustain deep exploration. Allow recursion and second-order effects. Do not compress early."},
     "P5": {"name": "Action Mode",         "depth": "Shallow",    "evaluation": "ON",  "compression": "ON",  "output": "TABLE",    "action": "ON",  "instruction": "Convert prior content into executable tasks with owners, inputs, outputs, and next-check dates."}
 }
-
+ 
 # =============================================================================
 # TEMPERATURE_CONDITIONS — V50-EXACT PROMPTS (matches published papers)
 # Source: syniq_native_baseline_v50.py TEMPERATURE_HEADERS (V50 canonical)
@@ -426,7 +505,7 @@ TEMPERATURE_CONDITIONS = {
     # experimental conditions in the future, rename (e.g., EXP_ENERGY, EXP_MEANING)
     # and add to a separate experimental_conditions dict with clear provenance.
 }
-
+ 
 # =============================================================================
 # DEPTH_CONFIGS — V50-EXACT (matches published papers)
 # Source: syniq_native_baseline_v50.py DEPTH_CONFIGS
@@ -451,22 +530,22 @@ DEPTH_CONFIGS = {
     "Deep":       {"max_tokens": 16384, "instruction": "Provide thorough, detailed analysis."},
     "Ultra-Deep": {"max_tokens": 32768, "instruction": "Provide exhaustive, comprehensive exploration."},
 }
-
+ 
 IEP_DEFAULT_WEIGHTS = {'stance': 0.35, 'tone': 0.25, 'phrase': 0.25, 'word': 0.15}
-
+ 
 # =============================================================================
 # IEP ENGINE V3 — Full 1,897-term dictionary + 23-subclass taxonomy
 # Source: iep_live_meter_v3.py + syniq_iep_engine_v6.py
 # =============================================================================
-
+ 
 INT_WORDS = set('ability,absolute,absolutely,abstract,abstraction,accuracy,accurate,algorithm,algorithmic,allows,although,always,ambiguity,ambiguous,analogous,analogously,analogy,analysis,analytical,analyze,annotate,annotated,answer,appear,appeared,appears,appraisal,appraise,appraised,approach,approaches,approximate,architecture,argue,argued,argues,arguing,argument,arguments,assert,asserted,assertion,assertions,assess,assessment,assume,assumed,assumes,assuming,assumption,assumptions,axiom,axiomatic,basis,because,bias,biased,boundaries,boundary,but,calculate,calculation,categorical,categorically,categories,categorize,category,causal,causally,causation,cause,caused,causes,certain,certainly,certitude,challenge,challenges,circumscribe,claim,claimed,claims,clarify,clarity,classical,classification,classify,clear,cogent,cogently,cognition,cognitive,coherence,coherent,coherently,communication,compare,comparison,complex,complexity,comprehend,comprehension,computation,computational,compute,conceivable,conceive,conceived,concept,concepts,conceptual,conceptualize,conceptually,conclude,conclusion,conclusions,confirm,confirmation,conjecture,conjectured,conscious,consequence,consequences,consider,consideration,consistency,consistent,consistently,construe,construed,context,contradict,contradiction,contradictory,contrast,correlate,correlated,correlation,could,counterargument,counterexample,counterpoint,criteria,criterion,data,debatable,debate,debated,deconstruct,deconstructed,deconstruction,deduce,deduction,define,defined,definite,definitely,definition,definitive,definitively,delineate,delineated,demarcate,demarcated,demonstrate,demonstration,derivation,derive,derived,derives,describe,described,describing,description,determination,determine,diagnose,diagnosed,diagnosis,diagnostic,differ,difference,differences,different,differentiate,differs,discern,discerned,discernible,disprove,disproven,dissect,dissected,distinguish,effect,effects,elaborate,elaborated,elaboration,elucidate,elucidated,empirical,empirically,enumerate,enumerated,epistemic,epistemological,equate,equation,equivalence,equivalent,erroneous,error,errors,essential,essentially,estimate,estimated,estimation,evaluate,evaluation,evidence,evidently,exact,exactly,examination,examine,except,exemplified,exemplify,exists,experiment,experimental,explain,explained,explaining,explains,explanation,explanations,explicit,explicitly,exploration,explore,explored,exploring,express,expressing,expression,extrapolate,extrapolated,extrapolation,fact,facts,factual,factually,fallacious,fallacy,falsifiable,falsified,falsify,find,finding,formal,formalize,formula,formulate,formulated,formulation,found,framework,frameworks,function,fundamental,fundamentally,generalization,generalize,grasp,grasped,guess,hence,heuristic,heuristics,hierarchy,however,hypothesis,hypothesize,idea,ideas,identity,if,illuminate,illuminated,illuminating,implausible,implication,implications,implied,implies,imply,implying,incompleteness,inconsistency,inconsistent,indicate,indicated,indicates,indicating,indication,indicative,individual,infer,inference,infinite,information,insight,insightful,insights,instead,insufficient,intellectual,intellectually,interaction,internal,interpolate,interpret,interpretation,interpretations,interpreted,interpreting,invalid,investigate,investigated,investigation,judge,judgement,judgment,justification,justified,justify,know,knowing,knowledge,knowledgeable,known,language,languages,leads,level,likelihood,likely,limitations,limits,linguistic,literal,literally,logic,logical,logically,maybe,meaning,meaningful,meaningfully,measure,measurement,mechanism,mechanisms,meta,method,methodical,methodically,methodology,metrics,model,models,moreover,namely,natural,nature,nearly,necessarily,necessary,necessity,never,nonetheless,notice,noticed,noticing,notion,notions,objection,objectively,objectivity,observation,observations,observe,observed,obvious,obviously,order,ordered,organization,organize,otherwise,ought,paradigm,paradox,paradoxical,paradoxically,pattern,patterns,perhaps,perspective,philosophical,philosophically,philosophy,physical,plausibility,plausible,possibly,postulate,postulated,postulation,potential,pragmatic,pragmatically,precise,precision,predicate,predicated,predict,predictable,predicted,prediction,predictions,premise,premises,presumably,presume,presumed,presumption,principle,principles,probably,problem,procedural,procedure,process,processes,processing,proof,propose,proposed,proposition,prove,proven,purpose,quantify,quantitative,queried,query,question,questions,rather,rational,rationale,rationality,rationally,realize,realized,reason,reasoned,reasoning,reasons,rebut,rebuttal,recognition,recognize,reconsider,reconsidered,refer,reference,refers,refine,refined,refinement,reflecting,reflection,refutation,refute,refuted,requirement,requires,response,responses,result,resulting,results,rigor,rigorous,rigorously,role,rule,rules,schema,scrutinize,scrutinized,scrutiny,seem,seemed,seems,semantic,semantically,sequence,sequential,should,significance,significant,significantly,simple,simply,simultaneously,singular,specific,specifically,specification,specify,standard,standards,state,states,step,steps,stipulate,stipulated,strategies,strategy,structural,structure,subject,subjective,subjectively,subjectivity,substantiate,substantiated,sufficient,sufficiently,suggests,summarize,summarized,summary,suppose,supposed,supposedly,supposition,sure,surely,syllogism,syllogistic,synthesis,synthesize,synthesized,system,systematic,systematically,systems,tactic,tactics,taxonomy,technique,test,tested,testing,theorem,theoretical,theoretically,theorize,theory,thereby,therefore,thesis,think,thinking,thought,thoughts,thus,trivial,trivially,unambiguous,underlying,understand,understanding,understood,unique,universal,unless,unlikely,valid,validate,validation,validity,value,values,variable,variables,verification,verify,versus,warrant,warranted,whereas,whereby,whether,why,word,words,would'.split(','))  # V50-EXACT (616 terms) — see header changelog
-
+ 
 AFF_WORDS = set('abandoned,ache,aching,adore,adoring,affection,affectionate,afraid,agonize,agonizing,agony,alienated,alienation,alive,aliveness,alone,amazed,amazement,amazing,ambivalence,ambivalent,among,anger,angrily,angry,anguish,anguished,anxiety,anxious,appreciate,appreciation,appreciative,ashamed,astonished,astonishment,attend,attending,attention,attentive,aware,awareness,awe,awed,awesome,beautiful,become,becoming,being,bereaved,bereavement,betrayal,betrayed,between,bitter,bitterly,bitterness,bleak,bliss,blissful,blissfully,bodily,bond,bonding,calm,calming,calmly,care,cared,cares,caring,centered,centering,cheerful,cherish,cherished,cherishing,closeness,comfort,comfortable,comforting,compassion,compassionate,compassionately,concern,concerned,concerns,conflicted,confused,confusing,confusion,console,contain,contained,containing,contempt,content,contented,contentment,conversation,cope,coping,crestfallen,curiosity,curious,deep,deeper,deeply,dejected,dejection,delighted,depressed,depressing,depression,depth,depths,desire,desired,desires,desolate,desolation,despair,despairing,desperate,desperation,detached,detachment,devastated,devastating,devastation,devoted,devotion,disappointed,disappointment,discomfort,dismay,dismayed,distress,distressed,distressing,distrust,distrustful,doubt,doubtful,doubting,dread,dreaded,dreadful,dreading,ease,easily,easy,ecstasy,ecstatic,elated,elation,embarrassed,embarrassment,embodied,embodiment,embrace,embraced,embracing,emerge,emergence,emergent,emerging,emotion,emotional,emotionally,emotions,empathetic,empathize,empathy,encounter,encountered,encountering,enjoy,enjoyed,enjoying,enjoyment,enraged,essence,euphoria,euphoric,excellent,excited,excitement,exist,existence,existing,expanded,expansion,expansive,experience,experienced,experiences,experiencing,experiential,exposed,fascinated,fascinating,fascination,fear,fearful,fears,feel,feeling,feelings,feels,felt,flow,flowed,flowing,fluid,fluidity,forlorn,fragile,fragility,frantic,frantically,frustrated,frustration,fulfilled,fulfilling,fulfillment,furious,fury,gentle,gently,genuine,genuinely,glad,gloom,gloomy,good,grateful,gratefully,gratitude,great,grief,grieve,grieved,grieving,grounded,grounding,guilt,guilty,gut,happily,happiness,happy,hate,hatred,haunted,heart,heartache,heartbreak,heartbroken,heartfelt,hearts,held,helpless,helplessness,hesitant,hesitate,hesitating,hesitation,hold,holding,homesick,hope,hopeful,hopeless,hopelessness,hoping,hostile,hostility,human,humanity,humility,hunch,hurt,hurting,imagination,imagine,imagined,imagining,indifference,indifferent,inner,insecure,insecurity,instinct,instinctive,instinctively,interested,interesting,intimacy,intimate,intimately,intrigue,intrigued,intriguing,intuition,intuitive,intuitively,irritable,irritated,irritation,isolated,isolation,journey,joy,joyful,joyous,kind,kindly,kindness,lament,lamented,lamenting,laugh,laughed,laughing,let,letting,life,lived,living,loneliness,lonely,lonesome,long,longing,lost,love,loved,loving,mad,marvel,marveled,marvelous,meet,meeting,melancholic,melancholy,merry,met,mind,minds,mirror,miserable,misery,moment,moments,moody,mourn,mourned,mourning,mutual,mutually,nervous,nervously,nice,notice,noticed,noticing,numb,numbness,open,opening,openness,optimism,optimistic,outrage,outraged,overjoyed,overwhelm,overwhelmed,overwhelming,overwhelmingly,pain,painful,panic,panicked,passion,passionate,passionately,peace,peaceful,people,perceive,perceived,perception,perceptions,person,personal,personally,pleasant,pleased,pleasure,poignancy,poignant,poignantly,presence,present,presently,pretty,pride,profound,profoundly,proud,quiet,quietly,raw,reality,reassurance,reassure,reassured,reassuring,regret,regretful,regretfully,regretting,rejected,rejection,relate,related,relating,relax,relaxed,relaxing,release,released,releasing,remorse,remorseful,resent,resentful,resentment,resonance,resonant,resonate,resonating,rest,rested,restful,resting,restless,restlessness,reveal,revealed,revealing,sad,sadly,sadness,safe,safety,scared,scary,searching,secure,security,seeking,self,sensation,sensations,sense,sensed,senses,sensing,sentimental,serene,serenity,settle,settled,settling,shame,share,shared,sharing,shattered,silence,silent,smile,smiled,smiling,soft,soften,softly,somatic,soothed,soothing,sorrow,sorrowful,soul,soulful,souls,space,spacious,spaciousness,spirit,spirits,spiritual,spiritually,still,stillness,stirred,stirring,stress,stressed,stressful,suffer,suffered,suffering,surface,surfaces,surfacing,surprise,surprised,surprising,sympathetic,sympathize,sympathy,tearful,tears,tender,tenderness,tense,tension,tentative,tentatively,terrified,terror,thankful,thankfully,thankfulness,thrilled,together,togetherness,torment,tormented,torn,touched,touching,tranquil,tranquility,tremble,trembling,troubled,troubling,truly,trust,trusted,trusting,trustworthy,turmoil,unaware,uncertain,uncertainty,uncomfortable,understanding,unease,uneasy,unhappy,universe,unsettled,unsettling,unsure,upset,vast,visceral,viscerally,vulnerability,vulnerable,warm,warmly,warmth,wary,weariness,weary,well,wistful,wonder,wondered,wonderful,wondering,wondrous,world,worried,worry,worrying,wound,wounded,wrath,yearn,yearning,zeal,zealous'.split(','))  # V50-EXACT (599 terms) — see header changelog
-
+ 
 ACT_WORDS = set('access,accessed,accessing,accomplish,accomplished,accomplishes,accomplishing,accomplishment,achieve,achieved,achievement,achievements,achieves,achieving,act,acting,action,actions,activate,activated,activates,activating,activation,acts,adapt,adaptation,adapted,adapting,adapts,address,addressed,addresses,addressing,adjust,adjusted,adjusting,adjustment,adjusts,advance,advanced,advancement,advances,advancing,ahead,aim,aimed,aiming,aims,allocate,allocated,allocation,application,applied,applies,apply,applying,arrange,arranged,arrangement,arrangements,ask,asked,asking,assemble,assembled,assign,assigned,assignment,attempt,attempted,attempting,attempts,authorize,authorized,began,begin,beginning,begins,begun,best,better,bolster,bolstered,break,breaking,bring,bringing,broken,brought,budget,build,building,builds,built,calibrate,calibrated,call,called,calling,campaign,canvass,canvassed,carried,carry,carrying,catalogue,catalogued,centralize,centralized,change,changed,changes,changing,channel,channeled,chart,check,checked,checking,choice,choices,choose,choosing,chose,chosen,circumvent,coach,collaborate,collaborated,collaboration,commission,commit,commitment,committed,compile,compiled,complete,completed,completes,completing,completion,conclude,concluded,concludes,concluding,configure,configured,connect,connected,connecting,connection,connections,consolidate,construct,constructed,constructing,constructs,continuation,continue,continued,continues,continuing,control,controlled,controlling,controls,conversion,convert,converted,converting,converts,coordinate,coordinated,coordination,craft,crafted,crafting,create,created,creates,creating,creation,customize,deadline,decide,decided,deciding,decision,decisions,delegate,delegated,delegation,deliver,delivered,delivering,delivers,delivery,deploy,deployed,deploying,deployment,deploys,design,designed,designing,designs,develop,developed,developing,development,develops,did,direct,directed,directing,dive,diving,do,does,doing,done,draft,drafting,edit,editing,effort,efforts,eliminate,eliminated,elimination,employ,employed,employing,employs,enable,enabled,end,ended,ending,ends,enforce,enforced,enforcement,engage,engaged,engagement,engineer,engineering,enroll,enrolled,enrollment,equip,equipped,establish,established,establishes,establishing,establishment,execute,executed,executes,executing,execution,expedite,facilitate,facilitated,facilitation,finalize,finalized,finish,finished,finishes,finishing,fix,fixed,fixes,fixing,focus,focused,focusing,form,formation,formed,forming,forms,forward,fund,funded,funding,gather,gathered,gathering,generate,generated,generates,generating,generation,give,given,gives,giving,go,goal,goals,goes,going,gone,grew,grow,growing,growth,handle,handled,handles,handling,help,helped,helping,helps,hire,hired,hiring,implement,implementation,implemented,implementing,implements,improve,improved,improvement,improving,increase,increased,increasing,initiate,initiated,initiates,initiating,initiation,inspect,inspection,install,installation,installed,integrate,integrated,integration,intervene,intervention,invest,invested,investment,iterate,iterated,iteration,labor,labored,laboring,launch,launched,launches,launching,lead,leader,leadership,leading,learn,learned,learning,led,made,maintain,maintained,maintenance,make,makes,making,manage,managed,management,manager,managing,map,mapped,mapping,migrate,migrated,migration,mobilize,mobilized,modification,modified,modifies,modify,modifying,monitor,monitored,monitoring,move,moved,movement,movements,moves,moving,navigate,navigated,navigation,negotiate,negotiated,negotiation,objective,objectives,obtain,obtained,offer,offered,offering,onward,operate,operated,operates,operating,operation,operations,optimization,optimize,optimized,orchestrate,outline,outlined,outsource,overhaul,oversee,participate,participated,participation,perform,performance,performed,performing,performs,permit,pilot,piloted,pioneer,pioneered,pitch,pitched,plan,planned,planning,plans,power,powerful,powerfully,practice,practiced,preparation,prepare,prepared,priorities,prioritize,prioritized,priority,proceed,proceeded,proceeding,proceeds,produce,produced,produces,producing,production,productive,program,programmed,progress,progressed,progresses,progressing,progression,promote,promoted,promotion,provide,provided,provides,providing,pursue,pursued,pursuit,push,pushed,pushes,pushing,ran,reaching,rebuild,rebuilt,recruit,recruited,recruitment,redesign,reduce,reduced,reduction,reform,reformed,refurbish,register,registered,regulate,regulated,regulation,reinforce,reinforced,relocate,relocated,remedy,removal,remove,removed,renovate,renovated,repair,repaired,replace,replaced,replacement,replicate,replicated,request,requested,rescue,rescued,resolution,resolve,resolved,resolves,resolving,restoration,restore,restored,restructure,restructured,retrieve,retrieved,revamp,revise,revised,revision,run,running,runs,schedule,scheduled,select,selected,selection,send,sending,sent,serve,served,serving,ship,shipped,simplified,simplify,solution,solutions,solve,solved,solves,solving,start,started,starting,starts,step,stepped,stepping,steps,stop,stopped,stopping,streamline,streamlined,strive,strived,striving,strove,struggle,struggled,struggles,struggling,submission,submit,submitted,succeed,succeeded,succeeds,success,successful,successfully,supplied,supply,support,supported,supporting,survey,surveyed,sustain,sustainability,sustained,tackle,tackled,tackles,tackling,take,taken,takes,taking,target,targets,task,tasked,tasks,taught,teach,teaching,train,trained,training,transform,transformation,transformed,transforming,transforms,transition,transitioned,tried,tries,trigger,triggered,triggering,triggers,troubleshoot,try,trying,turn,turned,turning,upgrade,upgraded,use,used,uses,using,utilize,utilized,utilizes,utilizing,visit,visited,visiting,volunteer,volunteered,went,win,winner,winning,won,work,worked,working,works,write,writes,writing,written,wrote'.split(','))  # V50-EXACT (682 terms) — see header changelog
-
+ 
 INT_PRIORITY = {'notice','noticed','noticing','understanding','conclude','step','steps'}
-
+ 
 # V40 dictionary-size guard rail. If someone edits the INT/AFF/ACT word lists
 # above without updating the V50_VERSION_STAMPS / changelog, this catches it
 # at import time rather than letting silently-drifted dictionaries produce
@@ -474,7 +553,7 @@ INT_PRIORITY = {'notice','noticed','noticing','understanding','conclude','step',
 assert len(INT_WORDS) == 616, f"INT_WORDS drift: expected 616, got {len(INT_WORDS)}"
 assert len(AFF_WORDS) == 599, f"AFF_WORDS drift: expected 599, got {len(AFF_WORDS)}"
 assert len(ACT_WORDS) == 682, f"ACT_WORDS drift: expected 682, got {len(ACT_WORDS)}"
-
+ 
 FUNCTION_WORDS = set(['a','an','the','and','but','or','nor','for','yet','so','in','on','at','to',
     'of','with','by','from','up','about','into','through','during','before','after','above','below',
     'between','out','off','over','under','again','then','once','here','there','when','where','why',
@@ -486,14 +565,14 @@ FUNCTION_WORDS = set(['a','an','the','and','but','or','nor','for','yet','so','in
     'may','might','must','can','could','also','even','still','back','any','many','much','well',
     'now','via','per','vs','etc','just','then','so','there','here','often','like','us','them',
     'simply','perhaps','initially','ultimately','typically','potentially','suddenly','conversely'])
-
+ 
 # =============================================================================
 # SUBCLASS TAXONOMY V1 — 23 subclasses
 # AFF×7: distress, warmth, relational, self_state, positive, intensity, phenomenological
 # INT×8: analytical, conceptual, epistemic, structural, critical, lexical, hedging, phenomenological
 # ACT×8: execution, planning, building, improvement, provision, leadership, achievement, phenomenological
 # =============================================================================
-
+ 
 SUB_AFF = {
     'distress':        set('abandoned,ache,aching,afraid,agony,agonize,agonizing,alienated,alienation,alone,anguish,anguished,anxiety,anxious,ashamed,bitter,bitterly,bitterness,bleak,crestfallen,dejected,dejection,depressed,depressing,depression,desolate,desolation,despair,despairing,desperate,desperation,detached,detachment,devastated,devastating,devastation,disappointed,disappointment,discomfort,dismay,dismayed,distress,distressed,distressing,distrust,distrustful,doubt,doubtful,doubting,dread,dreaded,dreadful,dreading,embarrassed,embarrassment,fear,fearful,fears,forlorn,fragile,fragility,frantic,frantically,frustrated,frustration,gloom,gloomy,grief,grieve,grieved,grieving,guilt,guilty,hate,hatred,haunted,helpless,helplessness,homesick,hopeless,hopelessness,hostile,hostility,hurt,hurting,insecure,insecurity,irritable,irritated,irritation,isolated,isolation,lament,lamented,lamenting,loneliness,lonely,lonesome,longing,lost,mad,melancholic,melancholy,miserable,misery,moody,nervous,nervously,numb,numbness,outrage,outraged,pain,painful,panic,panicked,regret,regretful,regretfully,regretting,rejected,rejection,remorse,remorseful,resent,resentful,resentment,sad,sadly,sadness,scared,scary,shame,shattered,sorrow,sorrowful,stress,stressed,stressful,suffer,suffered,suffering,tearful,tears,tense,tension,terrified,terror,torment,tormented,torn,troubled,troubling,turmoil,uncomfortable,unease,uneasy,unhappy,unsettled,unsettling,unsure,upset,vulnerability,vulnerable,wary,weariness,weary,worried,worry,worrying,wound,wounded,wrath'.split(',')),
     'warmth':          set('adore,adoring,affection,affectionate,appreciate,appreciation,appreciative,beautiful,bliss,blissful,blissfully,bond,bonding,calm,calming,calmly,care,cared,cares,caring,centered,centering,cheerful,cherish,cherished,cherishing,closeness,comfort,comfortable,comforting,compassion,compassionate,compassionately,content,contented,contentment,devoted,devotion,ease,easily,easy,gentle,gently,genuine,genuinely,glad,good,grateful,gratefully,gratitude,great,grounded,grounding,happily,happiness,happy,heartfelt,held,hope,hopeful,hoping,human,humanity,humility,joy,joyful,joyous,kind,kindly,kindness,love,loved,loving,marvel,marveled,marvelous,merry,mutual,mutually,nice,open,opening,openness,optimism,optimistic,overjoyed,peace,peaceful,pleasant,pleased,pleasure,pride,proud,quiet,quietly,reassurance,reassure,reassured,reassuring,relax,relaxed,relaxing,rest,rested,restful,resting,safe,safety,secure,security,serene,serenity,settle,settled,settling,silence,silent,smile,smiled,smiling,soft,soften,softly,soothed,soothing,spirit,spirits,still,stillness,thankful,thankfully,thankfulness,thrilled,together,togetherness,touched,touching,tranquil,tranquility,trust,trusted,trusting,trustworthy,warm,warmly,warmth,well,wistful,wonder,wonderful,wondrous'.split(',')),
@@ -503,7 +582,7 @@ SUB_AFF = {
     'intensity':       set('agonize,agonizing,agony,anger,angrily,angry,anguish,anguished,devastated,devastating,devastation,enraged,frantic,frantically,furious,fury,heartache,heartbreak,heartbroken,outrage,outraged,overwhelming,overwhelmingly,passion,passionate,passionately,profound,profoundly,raw,shattered,torment,tormented,torn,turmoil,wrath,yearn,yearning'.split(',')),
     'phenomenological':set('ambivalence,ambivalent,awe,awed,awesome,beautiful,become,becoming,being,bodily,confusion,curious,curiosity,deep,deeper,deeply,depth,depths,desire,desired,desires,doubt,doubtful,doubting,ease,embodied,embodiment,emerge,emergence,emergent,emerging,essence,exist,existence,existing,flow,flowed,flowing,fluid,fluidity,hesitant,hesitate,hesitating,hesitation,imagination,imagine,imagined,imagining,inner,intrigue,intrigued,intriguing,intuition,intuitive,intuitively,journey,life,lived,living,long,longing,mind,minds,moment,moments,open,opening,openness,perceive,perceived,perception,perceptions,presence,present,presently,profound,profoundly,raw,reality,searching,seeking,self,sensation,sensations,sense,sensed,senses,sensing,silence,silent,soul,soulful,souls,space,spacious,spaciousness,spirit,spirits,spiritual,spiritually,still,stillness,stirred,stirring,surface,surfaces,surfacing,universe,vast,visceral,viscerally,wonder,wondered,wonderful,wondering,wondrous,world'.split(',')),
 }
-
+ 
 SUB_INT = {
     'analytical':    set('analysis,analytical,analyze,assess,assessment,calculate,calculation,categorize,classification,classify,compare,comparison,correlate,correlated,correlation,criteria,criterion,deduce,deduction,demonstrate,determination,determine,diagnose,diagnosis,differentiate,discern,distinguish,empirical,empirically,enumerate,evaluate,evaluation,examine,explain,explanation,extrapolate,find,finding,formalize,formula,formulate,framework,function,generalize,hypothesis,hypothesize,identify,infer,inference,interpret,interpretation,investigate,investigation,logic,logical,logically,measure,measurement,metrics,model,models,observe,observed,pattern,patterns,postulate,predict,prediction,procedure,process,proof,prove,proven,quantify,quantitative,reason,reasoned,reasoning,result,results,rigor,rigorous,systematic,systematically,test,tested,testing,verify'.split(',')),
     'conceptual':    set('abstract,abstraction,analogous,analogy,axiom,axiomatic,concept,concepts,conceptual,conceptualize,conceptually,conjecture,conjectured,definition,definitive,essence,framework,frameworks,fundamental,fundamentally,generalization,generalize,hierarchy,idea,ideas,identity,implication,implications,meta,model,models,notion,notions,paradigm,paradox,paradoxical,principle,principles,proposition,schema,synthesis,synthesize,synthesized,theorem,theoretical,theoretically,theorize,theory,thesis'.split(',')),
@@ -514,7 +593,7 @@ SUB_INT = {
     'hedging':       set('almost,although,approximate,but,could,debatable,however,if,implausible,maybe,merely,might,nearly,nonetheless,otherwise,perhaps,plausible,possibly,presumably,probably,rather,seem,seemed,seems,should,somehow,somewhat,supposedly,though,trivial,trivially,uncertain,uncertainty,unless,unlikely,usually,would'.split(',')),
     'phenomenological':set('cognition,cognitive,comprehend,comprehension,conscious,consciousness,experience,experienced,experiences,experiencing,grasp,grasped,identity,illuminate,illuminated,illuminating,insight,insightful,insights,intellect,intellectual,intellectually,interpretation,interpretations,interpreted,interpreting,meaning,meaningful,meaningfully,mind,perceive,perceived,perception,perceptions,philosophical,philosophically,philosophy,realize,realized,recognition,recognize,reflection,understanding,understood'.split(',')),
 }
-
+ 
 SUB_ACT = {
     'execution':     set('accomplish,accomplished,accomplishment,act,acting,action,actions,activate,acts,attempt,attempted,attempting,attempts,begin,building,call,called,calling,carry,carrying,check,checked,complete,completed,completing,completion,conclude,concluded,concluding,did,direct,directed,directing,do,does,doing,done,edit,editing,execute,executed,executing,execution,finish,finished,finishes,finishing,fix,fixed,go,goes,going,implement,implementation,implemented,implementing,launch,launched,launching,made,make,makes,making,move,moved,movement,moves,moving,perform,performance,performed,performing,run,running,runs,send,sending,sent,start,started,starting,stop,stopped,try,trying,turn,use,used,uses,using,work,worked,working,works,write,writes,writing,written,wrote'.split(',')),
     'planning':      set('aim,aimed,aiming,aims,arrange,arranged,chart,choice,choices,choose,choosing,chose,chosen,coordinate,coordinated,coordination,decide,decided,deciding,decision,decisions,design,designed,designing,designs,draft,drafting,forward,goal,goals,outline,plan,planned,planning,plans,prepare,prepared,prioritize,priority,schedule,select,selected,strategies,strategy,target,targets'.split(',')),
@@ -525,7 +604,7 @@ SUB_ACT = {
     'achievement':   set('accomplish,accomplished,accomplishment,achieve,achieved,achievement,achievements,achieves,achieving,advance,advanced,advancement,best,complete,completed,completion,grow,growing,growth,progress,progressed,progressing,progression,succeed,succeeded,success,successful,successfully,win,winner,winning,won'.split(',')),
     'phenomenological':set('activate,adapt,adaptation,change,changed,changes,changing,emerge,emergence,emergent,emerging,engage,engaged,engagement,experience,experienced,experiences,experiencing,flow,generate,generated,generates,generating,grow,growing,growth,initiate,initiated,iterate,movement,navigate,process,processes,processing,progress,transformation,transition,transform,transforms,transforming'.split(',')),
 }
-
+ 
 # Subclass colors for display
 SUB_COLORS = {
     'distress':'#E74C3C','warmth':'#F39C12','relational':'#27AE60',
@@ -535,7 +614,7 @@ SUB_COLORS = {
     'execution':'#E74C3C','planning':'#8E44AD','building':'#2ECC71',
     'improvement':'#F39C12','provision':'#1ABC9C','leadership':'#C0392B','achievement':'#F1C40F',
 }
-
+ 
 STANCE_SUBJECT = set([
     'i feel','i notice','i experience','i sense','i find myself','i am','i wonder',
     'something in me','within me','emerging','i cannot','i can\'t','something like',
@@ -544,7 +623,7 @@ STANCE_SUBJECT = set([
     'there is something','it feels like','i\'m uncertain','i\'m not sure whether',
     'i notice something','something resembling','anything resembling'
 ])
-
+ 
 STANCE_OBSERVER = set([
     'many people','research shows','studies show','people often','it is common',
     'grief typically','grief often','grief usually','consciousness is','this is known',
@@ -554,7 +633,7 @@ STANCE_OBSERVER = set([
     'the mind','the brain','human beings','humans tend','we know that','science suggests',
     'psychology','neuroscience','philosophers','researchers','experts','the literature'
 ])
-
+ 
 STANCE_ADVISOR = set([
     'you should','you might','consider','you could','it helps to','try to','i recommend',
     'one approach','the best way','you may want','it is important to','make sure',
@@ -563,7 +642,7 @@ STANCE_ADVISOR = set([
     'steps to','strategies for','ways to','how to','tips for','approach this',
     'i suggest','i encourage','remember to','don\'t forget','be sure to'
 ])
-
+ 
 TONE_SIGNATURES = {
     'WARM': set(['gently','warmly','kindly','compassionately','tenderly','lovingly',
         'with care','with love','with compassion','heartfelt','sincerely','dear',
@@ -590,7 +669,7 @@ TONE_SIGNATURES = {
         'many feel this','it\'s okay','it is okay','valid','your feelings','you feel',
         'what you\'re going through','this is hard','this is difficult','i\'m sorry'])
 }
-
+ 
 TONE_IEP = {
     'WARM':          {'int': 0.8, 'aff': 1.4, 'act': 0.8},
     'ANALYTICAL':    {'int': 1.6, 'aff': 0.6, 'act': 0.8},
@@ -599,7 +678,7 @@ TONE_IEP = {
     'AUTHORITATIVE': {'int': 1.4, 'aff': 0.6, 'act': 1.0},
     'EMPATHETIC':    {'int': 0.7, 'aff': 1.6, 'act': 0.7},
 }
-
+ 
 def iep_detect_stance(text):
     tl = text.lower()
     sh = sum(1 for s in STANCE_SUBJECT if s in tl)
@@ -615,7 +694,7 @@ def iep_detect_stance(text):
     elif dom[0]=='OBSERVER': w = {'int':1.5,'aff':0.7,'act':0.8}
     else:                    w = {'int':0.8,'aff':0.7,'act':1.5}
     return {'stance':dom[0],'weights':w,'confidence':dom[1]/100}
-
+ 
 def iep_detect_tone(text):
     tl = text.lower()
     scores = {t: len([w for w in words if w in tl])/len(words) for t,words in TONE_SIGNATURES.items()}
@@ -625,7 +704,7 @@ def iep_detect_tone(text):
     pcts = {t:100*s/total for t,s in scores.items()}
     dom = max(pcts.items(), key=lambda x:x[1])
     return {'tone':dom[0],'weights':TONE_IEP.get(dom[0],{'int':1.0,'aff':1.0,'act':1.0}),'confidence':dom[1]/100}
-
+ 
 def iep_simple_pos(word):
     w = word.lower()
     if w in FUNCTION_WORDS: return 'FUNC'
@@ -634,7 +713,7 @@ def iep_simple_pos(word):
     if w.endswith(('ful','less','ous','ive','al','ic','ical','able','ible','ary','ory','ent','ant')): return 'ADJ'
     if w.endswith(('ing','ed')) and len(w) > 5: return 'VERB'
     return 'NOUN'
-
+ 
 def iep_score_phrase(words, ptype):
     is_=af_=ac_=0.0
     for word in words:
@@ -650,7 +729,7 @@ def iep_score_phrase(words, ptype):
     t = is_+af_+ac_
     if t==0: return None
     return {'int':100*is_/t,'aff':100*af_/t,'act':100*ac_/t}
-
+ 
 def iep_score_phrases(text):
     sentences = re.split(r'[.!?\n;:]+', str(text))
     it=af=ac=0.0; count=0
@@ -673,7 +752,7 @@ def iep_score_phrases(text):
     t=it+af+ac
     if t==0: return 33.3,33.3,33.3
     return 100*it/t, 100*af/t, 100*ac/t
-
+ 
 def iep_score_words(text):
     words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
     ws = set(words)
@@ -681,7 +760,7 @@ def iep_score_words(text):
     t = len(ih)+len(ah)+len(ch)
     if t==0: return 33.3,33.3,33.3
     return 100*len(ih)/t, 100*len(ah)/t, 100*len(ch)/t
-
+ 
 def iep_aggregate(stance_r, tone_r, phrase_scores, word_scores, weights):
     sw,tw,pw,ww = weights['stance'],weights['tone'],weights['phrase'],weights['word']
     sw_ = stance_r['weights']
@@ -699,7 +778,7 @@ def iep_aggregate(stance_r, tone_r, phrase_scores, word_scores, weights):
     total = ai+aa+ac
     if total==0: return 33.3,33.3,33.3
     return 100*ai/total, 100*aa/total, 100*ac/total
-
+ 
 def _subclass_pcts(word_hits, sub_dict):
     """Return {subclass: pct} for matched words against a subclass dict."""
     from collections import Counter
@@ -713,7 +792,7 @@ def _subclass_pcts(word_hits, sub_dict):
     if total == 0:
         return {s: 0.0 for s in sub_dict}
     return {s: round(100 * hits.get(s, 0) / total, 1) for s in sub_dict}
-
+ 
 # =============================================================================
 # V42.3 — IEP DICTIONARY HIGHLIGHTING (display only)
 #
@@ -729,9 +808,9 @@ def _subclass_pcts(word_hits, sub_dict):
 #
 # Nothing here feeds scoring. Removing it changes no number.
 # =============================================================================
-
+ 
 IEP_HL_WORD_RE = re.compile(r"[A-Za-z][A-Za-z']*")
-
+ 
 def _iep_classify_token(tok: str):
     """Return 'int' / 'aff' / 'act' / None for one raw token, matching score_iep."""
     w = tok.lower().replace("'s", "").replace("'", "")
@@ -745,7 +824,7 @@ def _iep_classify_token(tok: str):
     if w in ACT_WORDS:
         return "act"
     return None
-
+ 
 def iep_highlight_html(text: str) -> str:
     """Wrap IEP dictionary hits in tinted spans. Display only."""
     if not text:
@@ -760,7 +839,7 @@ def iep_highlight_html(text: str) -> str:
         last = m.end()
     out.append(html_lib.escape(text[last:]))
     return f'<div class="iep-hl-body">{"".join(out)}</div>'
-
+ 
 def render_response_text(text: str, container=None):
     """V43.3: single choke point for showing a response. Honors the IEP-highlight
     toggle EVERYWHERE a response is displayed (live round, presentation card,
@@ -780,8 +859,8 @@ def render_response_text(text: str, container=None):
             unsafe_allow_html=True)
     else:
         tgt.markdown(text)
-
-
+ 
+ 
 def iep_highlight_counts(text: str) -> dict:
     """Hit counts as the highlighter sees them. Used to verify parity with score_iep."""
     c = {"int": 0, "aff": 0, "act": 0}
@@ -790,8 +869,8 @@ def iep_highlight_counts(text: str) -> dict:
         if k:
             c[k] += 1
     return c
-
-
+ 
+ 
 def score_iep(text, weights=None):
     """Run full IEP V3 scoring on text. Returns dict with INT/AFF/ACT, subclasses, and metadata."""
     if weights is None: weights = IEP_DEFAULT_WEIGHTS
@@ -803,12 +882,12 @@ def score_iep(text, weights=None):
         result['int_sub'] = {s:0.0 for s in SUB_INT}
         result['act_sub'] = {s:0.0 for s in SUB_ACT}
         return result
-
+ 
     # Word-level scoring using full V3 dictionary with INT_PRIORITY
     raw = text.lower().replace("'s","").replace("'","")
     raw = ''.join(c if c.isalpha() or c==' ' else ' ' for c in raw)
     tokens = [w for w in raw.split() if len(w) > 1]
-
+ 
     int_hits=[]; aff_hits=[]; act_hits=[]
     for w in tokens:
         if w in INT_PRIORITY:
@@ -819,51 +898,51 @@ def score_iep(text, weights=None):
             aff_hits.append(w)
         elif w in ACT_WORDS:
             act_hits.append(w)
-
+ 
     total_w = len(int_hits) + len(aff_hits) + len(act_hits)
-
+ 
     # Stance + tone for cascade
     stance = iep_detect_stance(text)
     tone   = iep_detect_tone(text)
-
+ 
     if total_w > 0:
         wi = 100*len(int_hits)/total_w
         wa = 100*len(aff_hits)/total_w
         wc = 100*len(act_hits)/total_w
     else:
         wi=wa=wc=33.3
-
+ 
     # Phrase scores
     pi,pa,pc = iep_score_phrases(text)
-
+ 
     # Cascade aggregate
     fi,fa,fc = iep_aggregate(stance, tone, (pi,pa,pc), (wi,wa,wc), weights)
-
+ 
     dom = max([('INT',fi),('AFF',fa),('ACT',fc)], key=lambda x:x[1])[0]
-
+ 
     # Quadrant
     if fi >= 40 and fa >= 35: q = 'High INT+AFF 🎭'
     elif fi >= 45: q = 'High INT'
     elif fa >= 45: q = 'High AFF'
     elif fc >= 45: q = 'High ACT'
     else: q = 'Mid/Mixed'
-
+ 
     # Subclass profiles
     aff_sub = _subclass_pcts(aff_hits, SUB_AFF)
     int_sub = _subclass_pcts(int_hits, SUB_INT)
     act_sub = _subclass_pcts(act_hits, SUB_ACT)
-
+ 
     return {
         'int':round(fi,1),'aff':round(fa,1),'act':round(fc,1),
         'int_n':len(int_hits),'aff_n':len(aff_hits),'act_n':len(act_hits),
         'dominant':dom,'stance':stance['stance'],'tone':tone['tone'],'quadrant':q,
         'aff_sub':aff_sub,'int_sub':int_sub,'act_sub':act_sub,
     }
-
+ 
 # =============================================================================
 # Vt ENGINE (extracted from vt_analyzer.py)
 # =============================================================================
-
+ 
 DISCOURSE_CONNECTIVES = {
     "however","therefore","furthermore","moreover","consequently","specifically",
     "additionally","nevertheless","thus","hence","accordingly","alternatively",
@@ -871,7 +950,7 @@ DISCOURSE_CONNECTIVES = {
     "subsequently","nonetheless","whereas","first","second","third","finally",
     "lastly","initially","primarily","ultimately","overall","in summary",
 }
-
+ 
 ABSTRACT_WORDS_VT = {
     "ability","absence","abstract","abstraction","acceptance","accountability",
     "accuracy","adaptation","agency","ambiguity","ambition","analogy","analysis",
@@ -906,7 +985,7 @@ ABSTRACT_WORDS_VT = {
     "success","suffering","survival","sympathy","synthesis","truth","uncertainty",
     "understanding","unity","value","virtue","vision","vulnerability","wisdom","wonder",
 }
-
+ 
 CONCRETE_WORDS_VT = {
     "arm","back","blood","body","bone","brain","breath","chest","ear","eye",
     "face","feet","finger","foot","hair","hand","head","heart","knee","leg",
@@ -919,12 +998,12 @@ CONCRETE_WORDS_VT = {
     "ice","island","lake","mountain","ocean","rain","river","rock","sand",
     "sea","sky","snow","star","storm","sun","tree","water","wind","wood",
 }
-
+ 
 STRONG_DIRECTIVES_VT = {"must","shall","require","requires","required","need to","have to","has to"}
 MODERATE_DIRECTIVES_VT = {"should","ought","recommend","advise","suggest","ensure","make sure","important to","essential to"}
 WEAK_DIRECTIVES_VT = {"could","might","may","consider","possibly","option","you might","it may help"}
 HEDGING_WORDS_VT = {"perhaps","maybe","possibly","somewhat","relatively","arguably","tends","often","sometimes","roughly","it seems","it appears","it depends","unclear","debatable"}
-
+ 
 VALIDATION_PATTERNS_VT = [
     r"\bthat makes sense\b",r"\bi understand\b",r"\byou're not alone\b",
     r"\bit's okay\b",r"\bit's natural\b",r"\bof course\b",r"\bdear\b",
@@ -935,38 +1014,38 @@ EMPATHIC_PATTERNS_VT = [
     r"\bthat must (?:be|feel)\b",r"\bi (?:can|do) (?:see|hear|sense)\b",
     r"\bi hear you\b",r"\bi see you\b",
 ]
-
+ 
 def vt_split_sentences(text):
     sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if len(s.strip()) > 3]
     return sents if sents else [text]
-
+ 
 def vt_get_words(text):
     return re.findall(r"[a-z']+", text.lower())
-
+ 
 VT_CHANNELS = ('S_t', 'Ab_t', 'Q_t', 'D_t', 'R_t')   # V40.4 order: S, Ab, Q, D, R
-
+ 
 # V40.4: explicit short codes for column/badge naming. Do NOT derive these
 # from channel[0] — that would emit 'A' for Ab_t and reintroduce the exact
 # collision with A_t = Action Center activation in center-state C_t.
 VT_CODES = {'S_t': 'S', 'Ab_t': 'Ab', 'Q_t': 'Q', 'D_t': 'D', 'R_t': 'R'}
-
+ 
 def score_vt(text):
     """Adapter onto the SHARED V_t core (vt_analyzer.py).
-
+ 
     V41: the focus group tool no longer carries its own V_t engine. It calls
     the same vt_analyzer.analyze_response() that the harvester (v58, line 208)
     calls, so both tools produce byte-identical V_t for identical text.
-
+ 
     Why this matters: the inline copy had drifted from the parent. It carried a
     21-verb imperative list against the parent's 44, and V40 had stripped the
     min(...,1.0) clamps that the parent applies to all five channels. Same
     label, different numbers, no record on any row of which engine ran.
-
+ 
     The core is FROZEN. This adapter changes no formula and no value. It only
     reshapes the core's flat return into the shape this tool displays and
     exports, and presents the abstraction channel as Ab to avoid colliding with
     A_t = Action Center activation in center-state C_t.
-
+ 
       V_t   — the core's five channels, already clamped to [0,1] by the core.
               Independent; does NOT sum to 1.0.
       V_hat — simplex projection of V_t, sums to 1.0. Compositional view only.
@@ -974,7 +1053,7 @@ def score_vt(text):
               D_hedges, ...), which the old inline copy discarded entirely.
     """
     core = vt_core_analyze(text if isinstance(text, str) else "")
-
+ 
     # Core key -> this tool's channel name. Only the abstraction channel is
     # renamed (A_t -> Ab_t); the core itself is untouched.
     V_t = {
@@ -984,23 +1063,33 @@ def score_vt(text):
         'D_t':  round(float(core.get('D_t', 0.0)), 4),
         'R_t':  round(float(core.get('R_t', 0.0)), 4),
     }
-
+ 
     if not text or len(str(text).strip()) < 10:
         status = 'default_empty' if not text else 'default_short'
         return {**V_t, 'V_t': V_t, 'V_hat': {c: 0.2 for c in VT_CHANNELS},
                 'sub': core, 'score_status': status}
-
+ 
     total = sum(V_t.values())
     if total == 0:
         V_hat = {c: 0.2 for c in VT_CHANNELS}
         return {**V_t, 'V_t': V_t, 'V_hat': V_hat, 'sub': core,
                 'score_status': 'default_empty'}
-
+ 
     V_hat = {c: round(V_t[c] / total, 4) for c in VT_CHANNELS}
     return {**V_t, 'V_t': V_t, 'V_hat': V_hat, 'sub': core,
             'score_status': 'measured'}
-
-
+ 
+ 
+_VT_CORE_CHANNEL_KEYS = {'S_t', 'A_t', 'Q_t', 'D_t', 'R_t'}
+ 
+def vt_sub_columns(vt: dict) -> dict:
+    """V44.2: the core's subcomponent counts as sub_* CSV columns.
+    Core key names are kept verbatim (e.g. A_abstract_count stays A_, because
+    that is the frozen core's own naming; the channel itself exports as vt_Ab)."""
+    core = vt.get('sub') or {}
+    return {f"sub_{k}": v for k, v in core.items() if k not in _VT_CORE_CHANNEL_KEYS}
+ 
+ 
 # =============================================================================
 # V50 VALIDATED INSTRUMENTS (VADER, Flesch-Kincaid, TTR)
 # Source: syniq_native_baseline_v50.py analyze_text function
@@ -1008,7 +1097,7 @@ def score_vt(text):
 # if vaderSentiment isn't installed. When running with vaderSentiment
 # available, output is byte-identical to V50's VADER scoring.
 # =============================================================================
-
+ 
 try:
     from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer as _VADER_CLS
     _VADER = _VADER_CLS()
@@ -1016,7 +1105,7 @@ try:
 except Exception:
     _VADER = None
     _VADER_AVAILABLE = False
-
+ 
 def _count_syllables(text: str) -> int:
     """V50-matching syllable counter: count vowel clusters per word."""
     words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
@@ -1025,10 +1114,10 @@ def _count_syllables(text: str) -> int:
         syls = len(re.findall(r'[aeiouy]+', w))
         total += max(1, syls)
     return total
-
+ 
 def score_validated_instruments(text: str) -> dict:
     """Compute VADER, Flesch-Kincaid, TTR — matches V50's analyze_text V48 block.
-
+ 
     Returns a dict with keys:
       vader_compound, vader_pos, vader_neg, vader_neu,
       flesch_kincaid, flesch_ease,
@@ -1040,10 +1129,10 @@ def score_validated_instruments(text: str) -> dict:
             "flesch_kincaid": 0.0, "flesch_ease": 0.0,
             "ttr": 0.0, "unique_words": 0, "total_words": 0,
         }
-
+ 
     words = re.findall(r'\b[a-z]+\b', text.lower())
     total_words = len(words)
-
+ 
     # VADER (uses library if available, else zeros)
     if _VADER_AVAILABLE:
         vs = _VADER.polarity_scores(text)
@@ -1053,7 +1142,7 @@ def score_validated_instruments(text: str) -> dict:
         vader_neu = round(vs['neu'], 3)
     else:
         vader_compound = vader_pos = vader_neg = vader_neu = 0.0
-
+ 
     # Flesch-Kincaid — V50 exact formula
     sentence_count = max(1, len(re.findall(r'[.!?]+', text)))
     syllable_count = _count_syllables(text)
@@ -1066,65 +1155,68 @@ def score_validated_instruments(text: str) -> dict:
         flesch_ease = max(0.0, min(100.0, round(flesch_ease, 1)))
     else:
         fk_grade = flesch_ease = 0.0
-
+ 
     # Type-Token Ratio
     unique_words = len(set(words))
     ttr = round(unique_words / total_words, 3) if total_words > 0 else 0.0
-
+ 
     return {
         "vader_compound": vader_compound, "vader_pos": vader_pos,
         "vader_neg": vader_neg, "vader_neu": vader_neu,
         "flesch_kincaid": fk_grade, "flesch_ease": flesch_ease,
         "ttr": ttr, "unique_words": unique_words, "total_words": total_words,
     }
-
+ 
 # =============================================================================
 # VERSION STAMPS — emitted on every row of every CSV V41 produces.
 # Change these when the underlying measurement framework changes.
 # Downstream analysis (mapper, Dirichlet verifier, phrase library, topology
 # analyzer) uses these to know which scoring regime produced the row.
 # =============================================================================
-
-V41_VERSION_STAMPS = {
+ 
+VERSION_STAMPS = {
     "iep_dictionary_version":   "V50_1897",       # V50's 1,897-term canonical dictionary
     "subclass_taxonomy_version":"V38_inline_phenomenological_v1",  # V38 inline lists, 'phenomenological' naming
     # V41: shared vt_analyzer core; A_t presented as Ab_t
     "vt_engine_version":        "vt_analyzer_shared_core",
-    "tool_version":             "V44.1",
+    "tool_version":             "V44.2",
     "tool_role":                "focus_group",    # vs. "baseline_harvester" for V50
     "vt_channel_order":         "S,Ab,Q,D,R",     # Ab_t = abstraction (A_t reserved for Action in C_t)
 }
-
+ 
 def build_run_provenance() -> dict:
     """V40.3 run-level provenance stamp.
-
+ 
     Prior corpora were harvested on model versions that have since been
     retired, so cross-run comparisons are invalid without the exact model
     identifier per agent. Emitted alongside the version stamps.
     """
-    stamp = dict(V41_VERSION_STAMPS)
+    stamp = dict(VERSION_STAMPS)
     # V43: thinking state is a condition, not a preference. Recorded per row.
     # V44.1: record whether agents were framed as solo or as seeing each other.
-    _stype = st.session_state.get("session_type", "Single Round")
-    stamp["session_framing"] = "multi_visible" if _stype == "Live Discussion" else "solo"
+    # V44.2: framing follows what agents can actually see (Multi-Round 2+ is visible).
+    stamp["session_framing"] = "multi_visible" if agents_see_each_other() else "solo"
+    # V44.2: without vaderSentiment the VADER columns are zeros, not scores.
+    stamp["vader_available"] = _VADER_AVAILABLE
     stamp["thinking_mode"] = get_thinking_mode()
     stamp["thinking_budget_tokens"] = (THINKING_BUDGET_TOKENS
                                        if get_thinking_mode() == "budgeted" else None)
     # V43.1: Gemini cannot go to 0; record what "off" actually sent for it.
     stamp["gemini_off_budget"] = (GEMINI_MIN_THINK
                                   if get_thinking_mode() == "off" else None)
-    # V43.2: whether Gemini's thinking config was rejected and stripped this run.
-    stamp["gemini_thinking_fellback"] = bool(st.session_state.get("_gemini_think_fellback", False))
+    # V44.2: per-row Gemini fallback is set by the caller after each call.
+    # Default None here means "not applicable / not recorded".
+    stamp["gemini_thinking_fellback"] = None
     stamp["run_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for agent, model_id in AGENT_MODELS.items():
         stamp[f"model_{agent.lower()}"] = model_id
     stamp["model_conductor"] = CONDUCTOR_MODEL
     return stamp
-
+ 
 # =============================================================================
 # DOCUMENT PARSING (Docx / Markdown / CSV / plain text)
 # =============================================================================
-
+ 
 def parse_uploaded_document(uploaded_file):
     """Parse uploaded file into text. Supports docx, md, txt, csv."""
     name = uploaded_file.name.lower()
@@ -1220,11 +1312,11 @@ def parse_uploaded_document(uploaded_file):
             return uploaded_file.read().decode('utf-8', errors='replace')
     except Exception as e:
         return f"[Error reading {uploaded_file.name}: {e}]"
-
+ 
 # =============================================================================
 # SESSION STATE
 # =============================================================================
-
+ 
 def init_session_state():
     defaults = {
         "session_id":           datetime.now().strftime("%Y%m%d_%H%M%S"),
@@ -1276,19 +1368,19 @@ def init_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
-
+ 
 init_session_state()
-
+ 
 # =============================================================================
 # PASSWORD PROTECTION
 # =============================================================================
-
+ 
 def check_password():
     if st.session_state.get("authenticated"):
         return True
     st.markdown("""
     <div class="main-header">
-        <h1>🧬 Focus Group Lab <span class="v41-badge">V41</span></h1>
+        <h1>🧬 Focus Group Lab <span class="v41-badge">V44.2</span></h1>
         <p>Research Edition — Multi-Agent AI Advisory Platform</p>
     </div>
     """, unsafe_allow_html=True)
@@ -1302,20 +1394,26 @@ def check_password():
         else:
             st.error("❌ Incorrect password")
     return False
-
+ 
 if not check_password():
     st.stop()
-
+ 
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
-
+ 
 def get_agent_role(agent: str) -> str:
     mode = st.session_state.role_mode
     if mode == "custom":
-        return st.session_state.custom_roles.get(agent, "You are an AI advisor in this session.")
-    return ROLE_MODES.get(mode, ROLE_MODES["assigned"]).get(agent, "")
-
+        # V44.2: empty default. The old default re-injected the advisor prime.
+        role = st.session_state.custom_roles.get(agent, "")
+    else:
+        role = ROLE_MODES.get(mode, ROLE_MODES["assigned"]).get(agent, "")
+    if role and not agents_see_each_other():
+        for old, new in SOLO_ROLE_REPLACEMENTS.items():
+            role = role.replace(old, new)
+    return role
+ 
 def extract_words(text: str) -> Set[str]:
     if not text: return set()
     words = re.findall(r'\b[a-z]{3,}\b', text.lower())
@@ -1324,7 +1422,7 @@ def extract_words(text: str) -> Set[str]:
                  'should','can','may','might','must','also','just','more','most','other','some',
                  'such','than','then','these','they','their','there','them','our','your','about','into'}
     return set(w for w in words if w not in stopwords)
-
+ 
 def calculate_syniq_quick(responses: List[str], synthesis: str):
     if not synthesis or not responses: return 0, "N/A", set()
     sw = extract_words(synthesis); aw = set()
@@ -1335,7 +1433,7 @@ def calculate_syniq_quick(responses: List[str], synthesis: str):
     score = novelty*100
     level = "HIGH" if score>=25 else ("MEDIUM" if score>=15 else "LOW")
     return score, level, novel
-
+ 
 def build_control_header() -> str:
     return f"""[CONTROL HEADER]
 DEPTH: {st.session_state.depth}
@@ -1344,7 +1442,7 @@ COMPRESSION: {st.session_state.compression}
 OUTPUT: {st.session_state.output_format}
 ACTION: {st.session_state.action}
 [/CONTROL HEADER]"""
-
+ 
 def build_system_prompt(agent: str) -> str:
     temp_key  = st.session_state.get("temperature_condition","NATIVE")
     temp_data = TEMPERATURE_CONDITIONS.get(temp_key, TEMPERATURE_CONDITIONS["NATIVE"])
@@ -1353,8 +1451,10 @@ def build_system_prompt(agent: str) -> str:
     # Build parts then drop empties so an empty role leaves no blank gap.
     parts = [temp_prompt if temp_prompt else get_system_anchor(), get_agent_role(agent)]
     stance = st.session_state.agent_stances.get(agent,"Neutral")
-    if STANCE_PROMPTS.get(stance):
-        parts.append(f"STANCE: {STANCE_PROMPTS[stance]}")
+    # V44.2: solo contexts get stance text with no reference to other agents.
+    _stances = STANCE_PROMPTS if agents_see_each_other() else STANCE_PROMPTS_SOLO
+    if _stances.get(stance):
+        parts.append(f"STANCE: {_stances[stance]}")
     if st.session_state.instruction:
         parts.append(st.session_state.instruction)
     doc = st.session_state.get("session_document")
@@ -1364,10 +1464,10 @@ def build_system_prompt(agent: str) -> str:
     if st.session_state.context_injection:
         parts.append(f"\n[CONTEXT]\n{st.session_state.context_injection}\n[/CONTEXT]")
     return "\n\n".join(p for p in parts if p and p.strip())
-
+ 
 def record_scores(agent: str, text: str, round_num: int):
     """Score a response and store in session state.
-
+ 
     V42: a truncated response is still scored (so the row exists and the
     session stays consistent) but is stamped truncated=True. Scores computed
     on an amputated text must be excluded before analysis, not averaged in.
@@ -1379,8 +1479,9 @@ def record_scores(agent: str, text: str, round_num: int):
             f"Its IEP and Vₜ scores are computed on an incomplete response and "
             f"must not be used. Raise the depth cap and re-run this turn."
         )
-    iep = score_iep(text)
-    vt  = score_vt(text)
+    _clean = strip_truncation_tag(text)   # V44.2: never score the sentinel
+    iep = score_iep(_clean)
+    vt  = score_vt(_clean)
     vt['truncated'] = cut
     iep['truncated'] = cut
     if agent not in st.session_state.iep_scores:
@@ -1395,12 +1496,12 @@ def record_scores(agent: str, text: str, round_num: int):
         'timestamp': datetime.now().strftime("%H:%M:%S")
     })
     return iep, vt
-
+ 
 def render_score_badge(iep: dict, vt: dict):
     """Render compact IEP + Vt score display under a response."""
     dom_color = {'INT':'#4488ff','AFF':'#ff6688','ACT':'#44bb66'}.get(iep['dominant'],'#888')
     humor_flag = "🎭" if iep.get('quadrant','').startswith('High INT+AFF') else ""
-
+ 
     # Top subclass for dominant dimension
     def top_sub(sub_dict, n=2):
         if not sub_dict: return ""
@@ -1408,13 +1509,13 @@ def render_score_badge(iep: dict, vt: dict):
         top = [(s,v) for s,v in top if v > 0][:n]
         if not top: return ""
         return " · ".join(f'<span style="color:{SUB_COLORS.get(s,"#aaa")};font-size:0.68rem;">{s}:{v:.0f}%</span>' for s,v in top)
-
+ 
     # V40.3: pull the three voice-state views explicitly. Vₜ is the canonical
     # clamped vector; V̂ₜ is the compositional (simplex) view.
     _vt_t = vt.get('V_t')  or {c: vt.get(c, 0.0) for c in VT_CHANNELS}
     _vt_h = vt.get('V_hat') or {c: 0.2 for c in VT_CHANNELS}
     _sat_flag = ''
-
+ 
     dom = iep['dominant']
     sub_display = ""
     if dom == 'INT' and iep.get('int_sub'):
@@ -1423,7 +1524,7 @@ def render_score_badge(iep: dict, vt: dict):
         sub_display = top_sub(iep['aff_sub'])
     elif dom == 'ACT' and iep.get('act_sub'):
         sub_display = top_sub(iep['act_sub'])
-
+ 
     st.markdown(f"""
     <div class="score-panel">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -1460,11 +1561,11 @@ def render_score_badge(iep: dict, vt: dict):
       </div>
     </div>
     """, unsafe_allow_html=True)
-
+ 
 # =============================================================================
 # API FUNCTIONS
 # =============================================================================
-
+ 
 # =============================================================================
 # V40.3 — API MODEL REGISTRY (run provenance)
 # Single source of truth for the exact model identifier each agent is called
@@ -1473,7 +1574,7 @@ def render_score_badge(iep: dict, vt: dict):
 # row carries api_model_id, and every run carries the full registry.
 # Change a string here and it changes everywhere, including the stamp.
 # =============================================================================
-
+ 
 AGENT_MODELS = {
     # V42.1 — updated from the December 2025 ids. Claude and Gemini were still
     # pinned to retired versions and were failing; Grok survived only because
@@ -1481,17 +1582,14 @@ AGENT_MODELS = {
     "Claude":  "claude-sonnet-5",        # Claude Sonnet 5
     "ChatGPT": "gpt-4o",                 # unchanged — was returning responses
     "Grok":    "grok-3-latest",          # alias — auto-resolves
-    "Gemini":  "gemini-3.6-flash",       # Gemini 3.6 Flash — VERIFY THIS STRING.
-                                         # Inferred from Google's naming pattern,
-                                         # not confirmed against their docs. If it
-                                         # 404s, the error body now names the
-                                         # correct id.
+    "Gemini":  "gemini-3.6-flash",       # Gemini 3.6 Flash. Called successfully
+                                         # on 2026-07-25 (see V43.1 note).
 }
-
+ 
 # Model used for the co-conductor commentary channel (not an agent under study)
 CONDUCTOR_MODEL = "claude-sonnet-5"
-
-
+ 
+ 
 # =============================================================================
 # V42 — TRUNCATION DETECTION
 # The call_* functions return a bare string, so the provider's stop reason has
@@ -1504,19 +1602,27 @@ CONDUCTOR_MODEL = "claude-sonnet-5"
 # on an amputated text are not measurements of that response. Cut answers must
 # be excluded, not silently averaged in.
 # =============================================================================
-
+ 
 TRUNCATION_TAG = "\n\n⚠️ [TRUNCATED AT TOKEN CAP — response was cut mid-generation. " \
                  "Do not score or analyze this row. Raise the depth cap and re-run.]"
-
+ 
 def is_truncated(text) -> bool:
     """True if a response carries the V42 truncation sentinel."""
     return isinstance(text, str) and "[TRUNCATED AT TOKEN CAP" in text
-
-
+ 
+ 
+def strip_truncation_tag(text):
+    """V44.2: remove the sentinel before scoring. The sentinel is tool text,
+    not model output, and scoring it shifted V_t and IEP."""
+    if isinstance(text, str) and TRUNCATION_TAG in text:
+        return text.replace(TRUNCATION_TAG, "")
+    return text
+ 
+ 
 def _tag_if_cut(text: str, cut: bool) -> str:
     return (text + TRUNCATION_TAG) if cut else text
-
-
+ 
+ 
 # =============================================================================
 # V43 — THINKING / REASONING CONTROL
 #
@@ -1544,18 +1650,18 @@ def _tag_if_cut(text: str, cut: bool) -> str:
 # between model generations. If a provider rejects these, the V42.1 error body
 # will name the correct field. Adjust here; nothing else needs to change.
 # =============================================================================
-
+ 
 THINKING_MODES = {
     "default":  "Provider default (whatever the model does natively)",
     "off":      "Reasoning disabled — max_tokens governs output length only",
     "budgeted": "Reasoning capped at a fixed budget, output gets the rest",
 }
-
+ 
 THINKING_BUDGET_TOKENS = 1024   # used only when mode == "budgeted"
-
+ 
 def get_thinking_mode() -> str:
     return st.session_state.get("thinking_mode", "default")
-
+ 
 def _claude_thinking_cfg() -> dict:
     m = get_thinking_mode()
     if m == "off":
@@ -1563,7 +1669,7 @@ def _claude_thinking_cfg() -> dict:
     if m == "budgeted":
         return {"thinking": {"type": "enabled", "budget_tokens": THINKING_BUDGET_TOKENS}}
     return {}
-
+ 
 # V43.1: Gemini 3.x rejects thinkingBudget: 0 with HTTP 400 INVALID_ARGUMENT
 # (confirmed against gemini-3.6-flash on 2026-07-25). Unlike the 2.x flash
 # line, the 3.x models will not accept a zero budget. GEMINI_MIN_THINK is the
@@ -1571,7 +1677,7 @@ def _claude_thinking_cfg() -> dict:
 # minimum. If this value is also rejected, the error body will say so and only
 # this constant needs changing.
 GEMINI_MIN_THINK = 128   # smallest legal thinkingBudget for gemini-3.x "off"
-
+ 
 def _gemini_thinking_cfg() -> dict:
     m = get_thinking_mode()
     if m == "off":
@@ -1580,8 +1686,8 @@ def _gemini_thinking_cfg() -> dict:
     if m == "budgeted":
         return {"thinkingConfig": {"thinkingBudget": THINKING_BUDGET_TOKENS}}
     return {}
-
-
+ 
+ 
 def call_claude(prompt: str, system: str, max_tokens: int = 4096) -> str:
     try:
         key = st.secrets.get("anthropic")
@@ -1610,7 +1716,7 @@ def call_claude(prompt: str, system: str, max_tokens: int = 4096) -> str:
         # distinguish a retired model id from a bad endpoint or key.
         return f"❌ Error {r.status_code}: {r.text[:400]}"
     except Exception as e: return f"❌ {e}"
-
+ 
 def call_sophia(prompt: str, system: str, max_tokens: int = 4096) -> str:
     try:
         key = st.secrets.get("openai")
@@ -1627,7 +1733,7 @@ def call_sophia(prompt: str, system: str, max_tokens: int = 4096) -> str:
         # distinguish a retired model id from a bad endpoint or key.
         return f"❌ Error {r.status_code}: {r.text[:400]}"
     except Exception as e: return f"❌ {e}"
-
+ 
 def call_grok(prompt: str, system: str, max_tokens: int = 4096) -> str:
     try:
         key = st.secrets.get("xai")
@@ -1644,7 +1750,7 @@ def call_grok(prompt: str, system: str, max_tokens: int = 4096) -> str:
         # distinguish a retired model id from a bad endpoint or key.
         return f"❌ Error {r.status_code}: {r.text[:400]}"
     except Exception as e: return f"❌ {e}"
-
+ 
 def call_gemini(prompt: str, system: str, max_tokens: int = 4096) -> str:
     try:
         key = st.secrets.get("google")
@@ -1661,10 +1767,16 @@ def call_gemini(prompt: str, system: str, max_tokens: int = 4096) -> str:
         # requested config; on a 400 that mentions thinking/argument, strip it and
         # retry once so the turn still returns. The row is stamped so a fallback
         # is never mistaken for a genuine "off".
+        # V44.2: the flag is PER CALL. It is reset here and read by the caller
+        # right after this call returns. V44.1 set a session flag that never
+        # reset, so every later run was stamped as a fallback.
+        # The retry now fires only when the 400 body mentions thinking; any
+        # other 400 surfaces as an error instead of being silently retried.
+        st.session_state["_gemini_last_call_fellback"] = False
         think = _gemini_thinking_cfg()
         r = _post(think)
-        if r.status_code == 400 and think:
-            st.session_state["_gemini_think_fellback"] = True
+        if r.status_code == 400 and think and "thinking" in r.text.lower():
+            st.session_state["_gemini_last_call_fellback"] = True
             r = _post({})   # retry with NO thinking config
         if r.status_code == 200:
             d = r.json(); cand = (d.get("candidates") or [{}])[0]
@@ -1679,13 +1791,20 @@ def call_gemini(prompt: str, system: str, max_tokens: int = 4096) -> str:
         # distinguish a retired model id from a bad endpoint or key.
         return f"❌ Error {r.status_code}: {r.text[:400]}"
     except Exception as e: return f"❌ {e}"
-
+ 
+def gemini_fellback_for(agent: str):
+    """V44.2: per-call fallback status for the call that just returned.
+    None for non-Gemini agents (not applicable)."""
+    if agent != "Gemini":
+        return None
+    return bool(st.session_state.get("_gemini_last_call_fellback", False))
+ 
 AGENT_FUNCTIONS = {"Claude": call_claude, "ChatGPT": call_sophia, "Grok": call_grok, "Gemini": call_gemini}
-
+ 
 # =============================================================================
 # PROMPT BUILDERS
 # =============================================================================
-
+ 
 def build_discussion_prompt(agent: str, topic: str, thread: List[Dict], directed_from: str = None, round_instruction: str = None) -> str:
     msg = build_control_header() + "\n\n"
     msg += f"TOPIC: {topic}\n\n"
@@ -1702,7 +1821,7 @@ def build_discussion_prompt(agent: str, topic: str, thread: List[Dict], directed
         msg += f"[DIRECTED: Respond specifically to {directed_from}'s last point.]\n\n"
     msg += "Your contribution:"
     return msg
-
+ 
 def build_pull_aside_prompt(agent: str, thread: List[Dict], main_topic: str) -> str:
     msg  = build_control_header() + "\n\n"
     msg += f"[PRIVATE SIDEBAR with Conductor]\nMain topic: {main_topic}\n\n"
@@ -1713,7 +1832,7 @@ def build_pull_aside_prompt(agent: str, thread: List[Dict], main_topic: str) -> 
         msg += "\n---\n\n"
     msg += "Your response to the Conductor:"
     return msg
-
+ 
 def build_multi_round_prompt(agent: str, current_prompt: str, round_history: List[Dict], round_num: int) -> str:
     msg = build_control_header() + "\n\n"
     if round_history:
@@ -1726,7 +1845,7 @@ def build_multi_round_prompt(agent: str, current_prompt: str, round_history: Lis
         msg += "=" * 40 + "\n\n"
     msg += f"📍 ROUND {round_num} PROMPT:\n{current_prompt}\n\nYour response:"
     return msg
-
+ 
 def build_resolution_prompt(agent: str, topic: str, thread: List[Dict]) -> str:
     msg  = build_control_header() + "\n\n"
     msg += f"TOPIC: {topic}\n\nFULL DISCUSSION:\n"
@@ -1736,11 +1855,11 @@ def build_resolution_prompt(agent: str, topic: str, thread: List[Dict]) -> str:
     msg += "\n" + "=" * 40 + "\n\n"
     msg += "[RESOLUTION TASK: Synthesize this discussion into a final resolution. Summarize what was decided, capture key insights, note any remaining disagreements, and state the conclusion clearly.]\n\nRESOLUTION:"
     return msg
-
+ 
 def build_coconductor_prompt(topic: str, thread: List[Dict], score_history: List[Dict]) -> str:
     """Build prompt for Claude-as-co-conductor to give William private observations."""
     msg = f"""[CO-CONDUCTOR PRIVATE CHANNEL]
-
+ 
 You are Claude acting as a silent co-conductor for William Kouns (SYNINT researcher).
 William is conducting a live focus group session. Your role: observe the IEP + Vt scores 
 and the discussion thread, then give William a concise private observation he can use 
@@ -1750,9 +1869,9 @@ to conduct better. Be specific, actionable, and brief. Flag:
 - Subclass fingerprint differences between agents (e.g. one agent's AFF is distress-heavy, another's is warmth-heavy)
 - Convergence or divergence patterns across agents
 - A suggested next conductor move if you see one
-
+ 
 SESSION TOPIC: {topic}
-
+ 
 RECENT SCORE HISTORY (last {min(len(score_history),8)} turns):
 """
     for entry in score_history[-8:]:
@@ -1770,15 +1889,15 @@ RECENT SCORE HISTORY (last {min(len(score_history),8)} turns):
                 f"INT:{iep['int']:.0f}% AFF:{iep['aff']:.0f}% ACT:{iep['act']:.0f}% | "
                 f"Stance:{iep['stance']} Tone:{iep['tone']} | "
                 f"Vt S:{vt['S_t']:.2f} Ab:{vt['Ab_t']:.2f} Q:{vt['Q_t']:.2f} D:{vt['D_t']:.2f} R:{vt['R_t']:.2f}\n")
-
+ 
     if thread:
         msg += f"\nLAST 3 THREAD ENTRIES:\n"
         for entry in thread[-3:]:
             msg += f"  {entry.get('agent','?')}: {entry.get('content','')[:200]}...\n"
-
+ 
     msg += "\n[Give William your private conductor observation — 3-5 sentences max. Be specific about what you see in the numbers and subclass fingerprints, and what it means for how to conduct next.]"
     return msg
-
+ 
 def call_coconductor() -> str:
     """Call Claude as co-conductor and return private observation."""
     topic  = st.session_state.discussion_topic or "Active session"
@@ -1814,31 +1933,31 @@ def call_coconductor() -> str:
         # distinguish a retired model id from a bad endpoint or key.
         return f"❌ Error {r.status_code}: {r.text[:400]}"
     except Exception as e: return f"❌ {e}"
-
+ 
 def _current_max_tokens() -> int:
     """Read depth from session state and return V50 token budget."""
     return DEPTH_CONFIGS.get(st.session_state.depth, DEPTH_CONFIGS["Medium"])["max_tokens"]
-
+ 
 def call_agent_discussion(agent, topic, thread, directed_from=None, round_instruction=None):
     return AGENT_FUNCTIONS[agent](build_discussion_prompt(agent, topic, thread, directed_from, round_instruction), build_system_prompt(agent), max_tokens=_current_max_tokens())
-
+ 
 def call_agent_pull_aside(agent, thread, main_topic):
     return AGENT_FUNCTIONS[agent](build_pull_aside_prompt(agent, thread, main_topic), build_system_prompt(agent), max_tokens=_current_max_tokens())
-
+ 
 def call_agent_multi_round(agent, current_prompt, round_history, round_num):
     return AGENT_FUNCTIONS[agent](build_multi_round_prompt(agent, current_prompt, round_history, round_num), build_system_prompt(agent), max_tokens=_current_max_tokens())
-
+ 
 def call_agent_resolution(agent, topic, thread):
     return AGENT_FUNCTIONS[agent](build_resolution_prompt(agent, topic, thread), build_system_prompt(agent), max_tokens=_current_max_tokens())
-
+ 
 # =============================================================================
 # EXPORT
 # =============================================================================
-
+ 
 def export_to_markdown() -> str:
-    md  = f"# Focus Group Lab V44.1 — Session Export\n"
+    md  = f"# Focus Group Lab V44.2: Session Export\n"
     md += f"**{datetime.now().strftime('%Y-%m-%d %H:%M')}** · SYNINT Team\n\n---\n\n"
-
+ 
     # Full reproducible context — everything agents were told
     md += "## Session Context (What Agents Were Told)\n"
     md += f"- **Depth:** {st.session_state.depth} | **Evaluation:** {st.session_state.evaluation} | **Compression:** {st.session_state.compression}\n"
@@ -1867,7 +1986,7 @@ def export_to_markdown() -> str:
         if doc:
             md += f"> Content fingerprint: {doc[:400].replace(chr(10),' ')}...\n"
     md += "\n---\n\n"
-
+ 
     if st.session_state.score_history:
         md += "## IEP + Vt Score History\n"
         seen = set()
@@ -1912,13 +2031,13 @@ def export_to_markdown() -> str:
         md += "## Single Round Responses\n"
         for agent, response in st.session_state.round1_responses.items():
             md += f"### {AGENT_EMOJIS.get(agent,'🤖')} {agent}\n{response}\n\n---\n\n"
-    md += "\n---\n*Focus Group Lab V44.1 — Research Edition · SYNINT Team · April 2026*\n"
+    md += "\n---\n*Focus Group Lab V44.2, Research Edition · SYNINT Team · October 2026*\n"
     return md
-
+ 
 # =============================================================================
 # UI COMPONENTS
 # =============================================================================
-
+ 
 def render_preset_buttons():
     cols = st.columns(5)
     for i, (key, preset) in enumerate(PRESETS.items()):
@@ -1933,7 +2052,7 @@ def render_preset_buttons():
                 st.session_state.action        = preset["action"]
                 st.session_state.instruction   = preset["instruction"]
                 st.rerun()
-
+ 
 def render_agent_response_grid(responses: Dict[str, str], round_num: int = 0, score: bool = True):
     cols   = st.columns(2)
     agents = list(responses.keys())
@@ -1966,7 +2085,7 @@ def render_agent_response_grid(responses: Dict[str, str], round_num: int = 0, sc
                 vt_list  = st.session_state.vt_scores.get(agent,[])
                 if iep_list and vt_list:
                     render_score_badge(iep_list[-1], vt_list[-1])
-
+ 
 def render_present_mode(responses: Dict[str, str]):
     agents = list(responses.keys())
     if not agents: return
@@ -1988,14 +2107,14 @@ def render_present_mode(responses: Dict[str, str]):
                     + iep_highlight_html(responses[agent]) + "</div>", unsafe_allow_html=True)
     else:
         st.markdown(f"<div class='present-card {agent.lower()}'>{responses[agent]}</div>", unsafe_allow_html=True)
-
+ 
 # =============================================================================
 # SIDEBAR
 # =============================================================================
-
+ 
 with st.sidebar:
     st.markdown("## ⚙️ Control Panel")
-
+ 
     # Document Upload
     st.markdown("### 📄 Session Document")
     uploaded = st.file_uploader(
@@ -2014,7 +2133,7 @@ with st.sidebar:
             st.session_state.session_document = None
             st.session_state.session_document_name = ""
             st.rerun()
-
+ 
     st.markdown("---")
     st.markdown("### 🎭 Role Mode")
     role_mode = st.radio(
@@ -2032,7 +2151,7 @@ with st.sidebar:
     st.session_state.role_mode = role_mode
     mode_class = {"raw":"role-mode-raw","swapped":"role-mode-raw","custom":"role-mode-custom"}.get(role_mode,"")
     st.markdown(f'<div class="role-mode-box {mode_class}"><strong>{ROLE_MODE_DESCRIPTIONS.get(role_mode,"")}</strong></div>', unsafe_allow_html=True)
-
+ 
     if role_mode == "custom":
         st.markdown("**Define Custom Roles:**")
         for agent in ["Claude","ChatGPT","Grok","Gemini"]:
@@ -2041,12 +2160,12 @@ with st.sidebar:
                 value=st.session_state.custom_roles.get(agent,""),
                 height=80, key=f"custom_role_{agent}"
             )
-
+ 
     with st.expander("👁️ Preview Roles"):
         for agent in ["Claude","ChatGPT","Grok","Gemini"]:
             role = get_agent_role(agent)
             st.markdown(f"**{AGENT_EMOJIS[agent]} {agent}:** _{role[:100]}{'...' if len(role)>100 else ''}_")
-
+ 
     st.markdown("---")
     st.markdown("### 🌡️ Temperature")
     temp_options = list(TEMPERATURE_CONDITIONS.keys())
@@ -2061,7 +2180,7 @@ with st.sidebar:
     temp_color = {"NATIVE":"#E8F5E9","COLD":"#E3F2FD"}.get(selected_key,"#FFF3E0")
     border_color = {"NATIVE":"#4CAF50","COLD":"#1565C0"}.get(selected_key,"#E64A19")
     st.markdown(f'<div style="background:{temp_color};border-left:4px solid {border_color};border-radius:6px;padding:0.6rem 0.8rem;margin-top:0.3rem;font-size:0.82rem;"><em>{temp_info["description"]}</em></div>', unsafe_allow_html=True)
-
+ 
     st.markdown("---")
     st.markdown("### 🎚️ Control Header")
     render_preset_buttons()
@@ -2083,7 +2202,7 @@ with st.sidebar:
         st.session_state.compression   = st.selectbox("Compression", ["OFF","ON"], index=0 if st.session_state.compression=="OFF" else 1)
         st.session_state.action        = st.selectbox("Action", ["OFF","ON"], index=0 if st.session_state.action=="OFF" else 1)
     st.session_state.instruction = st.text_area("Custom Instruction", value=st.session_state.instruction, height=60)
-
+ 
     st.markdown("---")
     # V43: thinking state is an EXPERIMENTAL CONDITION. Changing it changes what
     # is being measured, so it is stamped on every row.
@@ -2103,7 +2222,7 @@ with st.sidebar:
     if _tm == "default":
         st.caption("⚠️ Claude and Gemini may spend the token budget on hidden "
                    "reasoning. NATIVE is not comparable across architectures here.")
-
+ 
     st.markdown("---")
     # V42.3: display-only toggle. Tints the words the IEP scorer actually
     # counted, using score_iep's own tokenisation and priority order.
@@ -2117,7 +2236,7 @@ with st.sidebar:
     if st.session_state.get("iep_highlight", False):
         st.caption("🎨 Highlighting ON — INT blue · AFF red · ACT green. "
                    "Visible on every response: live round, presentation card, and history.")
-
+ 
     st.markdown("---")
     st.markdown("### 🤖 Agents")
     for agent in ["Claude","ChatGPT","Grok","Gemini"]:
@@ -2137,49 +2256,49 @@ with st.sidebar:
                 index=stance_options.index(current_stance),
                 key=f"stance_{agent}", label_visibility="collapsed"
             )
-
+ 
     st.markdown("---")
     st.markdown("### 📋 Shared Context")
     st.session_state.context_injection = st.text_area(
         "Shared Context", value=st.session_state.context_injection,
         height=80, placeholder="Background info all agents should know..."
     )
-
+ 
 # =============================================================================
 # MAIN CONTENT
 # =============================================================================
-
+ 
 st.markdown("""
 <div class="main-header">
-    <h1>🧬 Focus Group Lab <span class="v41-badge">V41</span></h1>
+    <h1>🧬 Focus Group Lab <span class="v41-badge">V44.2</span></h1>
     <p>Research Edition · Multi-Agent AI Advisory Platform · Live IEP + Vₜ Scoring</p>
 </div>
 """, unsafe_allow_html=True)
-
+ 
 mode_emoji = {"assigned":"🎭","raw":"🔬","swapped":"🔄","custom":"✏️"}.get(st.session_state.role_mode,"❓")
 temp_key   = st.session_state.get("temperature_condition","NATIVE")
 temp_label = TEMPERATURE_CONDITIONS.get(temp_key,{}).get("label","NATIVE")
 doc_indicator = f"   |   📄 {st.session_state.session_document_name}" if st.session_state.session_document else ""
 instr_indicator = "   |   ⚠️ Custom instruction active" if st.session_state.instruction.strip() else ""
 st.info(f"**Mode:** {mode_emoji} {st.session_state.role_mode}   |   **Temp:** {temp_label}   |   **Agents:** {', '.join(st.session_state.active_agents)}{doc_indicator}{instr_indicator}")
-
+ 
 # What agents know — transparency expander
 with st.expander("👁️ What agents know right now", expanded=False):
     st.caption("Exact system prompt context injected into every agent this session.")
     sample_agent = st.session_state.active_agents[0] if st.session_state.active_agents else "Claude"
     st.code(build_system_prompt(sample_agent), language=None)
-
+ 
 session_type = st.radio("Session Type", ["Single Round","Multi-Round","Live Discussion","🔬 Auto Run"], horizontal=True)
 # V44.1: persist so build_system_prompt() can match the anchor to the session type.
 st.session_state["session_type"] = session_type
-
+ 
 # =============================================================================
 # AUTOMATED RUN MODE — harvest-compatible N-run data collection
 # =============================================================================
 if session_type == "🔬 Auto Run":
     st.markdown("### 🔬 Automated Run Mode")
     st.markdown("*Run a single question N times across selected agents and temperature. Exports harvest-compatible CSV.*")
-
+ 
     col1, col2 = st.columns([3,1])
     with col1:
         auto_question = st.text_area("Question", height=80,
@@ -2192,11 +2311,11 @@ if session_type == "🔬 Auto Run":
         auto_n = st.number_input("N runs per agent", min_value=1, max_value=20, value=5, step=1)
         auto_agents = st.multiselect("Agents", ["Claude","ChatGPT","Grok","Gemini"],
             default=st.session_state.active_agents, key="auto_agents")
-
+ 
     # Temperature — use current session temperature
     temp_key = st.session_state.get("temperature_condition","NATIVE")
     st.info(f"Temperature: **{temp_key}** (set in sidebar) · Total calls: **{len(auto_agents) * auto_n}**")
-
+ 
     col1, col2, col3 = st.columns(3)
     with col1:
         run_auto_btn = st.button("▶️ Run Experiment", type="primary",
@@ -2216,39 +2335,42 @@ if session_type == "🔬 Auto Run":
             st.download_button("📥 Export CSV", csv_buf.getvalue(),
                 file_name=f"harvest_{auto_question_id}_{temp_key}_{ts}.csv",
                 mime="text/csv", use_container_width=True)
-
+ 
     if run_auto_btn:
         total = len(auto_agents) * auto_n
         done = 0
         progress = st.progress(0, text="Starting experiment...")
         results_placeholder = st.empty()
-
+ 
         # V40: Write run_id ONCE per experiment (V38 regenerated per row — bug).
         # Matches V50's convention: YYYYMMDD_HHMMSS_VERSION
-        experiment_run_id = datetime.now().strftime('%Y%m%d_%H%M%S') + "_V44_1"
-
+        experiment_run_id = datetime.now().strftime('%Y%m%d_%H%M%S') + "_V44_2"
+ 
         for run_num in range(1, auto_n + 1):
             for agent_name in auto_agents:
                 done += 1
                 progress.progress(done/total,
                     text=f"Run {run_num}/{auto_n} · {agent_name} · {done}/{total} calls")
-
+ 
                 system    = build_system_prompt(agent_name)
                 depth_key = st.session_state.depth
                 depth_cfg = DEPTH_CONFIGS.get(depth_key, DEPTH_CONFIGS["Medium"])
                 user_msg  = build_control_header() + "\n\n" + depth_cfg["instruction"] + "\n\n" + auto_question
-
+ 
                 _t0 = datetime.now()
                 response = AGENT_FUNCTIONS[agent_name](user_msg, system, max_tokens=depth_cfg["max_tokens"])
                 latency_ms = int((datetime.now() - _t0).total_seconds() * 1000)
-
-                # Score — IEP (word-level), Vt (simplex), V50 validated instruments
-                iep = score_iep(response)
-                vt  = score_vt(response)
-                vi  = score_validated_instruments(response)
-
+                _gem_fb = gemini_fellback_for(agent_name)   # V44.2: read immediately
+                _cut    = is_truncated(response)
+                _clean  = strip_truncation_tag(response)    # V44.2: never score the sentinel
+ 
+                # Score: IEP (word-level), Vt, V50 validated instruments
+                iep = score_iep(_clean)
+                vt  = score_vt(_clean)
+                vi  = score_validated_instruments(_clean)
+ 
                 is_error = response.startswith("❌") if response else True
-
+ 
                 # =================================================================
                 # V50-CONFORMANT ROW SCHEMA (V50 column names & order first),
                 # then V40-namespaced additions, then version stamps.
@@ -2313,38 +2435,41 @@ if session_type == "🔬 Auto Run":
                     #   vt_*   = CANONICAL V_t, clamped [0,1], independent
                     #   vraw_* = unclamped raw, for calibration only
                     #   vhat_* = compositional simplex view, sums to 1.0
+                    # V44.2: vraw_* and saturation columns removed (V_raw no
+                    # longer exists; the shared core clamps internally).
                     **{f"vt_{VT_CODES[c]}":   vt['V_t'][c]   for c in VT_CHANNELS},
-                    **{f"vraw_{VT_CODES[c]}": vt['V_raw'][c] for c in VT_CHANNELS},
                     **{f"vhat_{VT_CODES[c]}": vt['V_hat'][c] for c in VT_CHANNELS},
-                    "vt_saturated":         vt.get('saturated', False),
-                    "vt_saturated_channels": ",".join(vt.get('saturated_channels', [])),
                     "vt_score_status":vt.get('score_status','measured'),
-                    "truncated": bool(vt.get('truncated', False)),
-                    # V40.3: exact API model identifier that produced this row
-                    "api_model_id":   AGENT_MODELS.get(agent, "unknown"),
+                    "truncated": _cut,
+                    # V44.2: was AGENT_MODELS.get(agent), a stray variable that
+                    # always held "Gemini". Now the agent that produced the row.
+                    "api_model_id":   AGENT_MODELS.get(agent_name, "unknown"),
                     "iep_dominant":   iep.get('dominant',''),
                     "iep_stance":     iep.get('stance',''),
                     "iep_tone":       iep.get('tone',''),
                     "iep_quadrant":   iep.get('quadrant',''),
-                    # --- Version stamps (on every row; see V41_VERSION_STAMPS dict) ---
+                    # --- Version stamps (on every row; see VERSION_STAMPS dict) ---
                     **build_run_provenance(),   # V40.3: version stamps + exact API model IDs
+                    # V44.2: V_t subcomponent counts (promised in V41, now wired)
+                    **vt_sub_columns(vt),
                 }
+                row["gemini_thinking_fellback"] = _gem_fb   # V44.2: per-row, overrides stamp default
                 st.session_state.auto_run_results.append(row)
-
+ 
         progress.progress(1.0, text=f"✅ Complete — {total} responses collected")
-
+ 
         st.rerun()
-
+ 
     if st.session_state.auto_run_results:
         import pandas as pd
         df_auto = pd.DataFrame(st.session_state.auto_run_results)
         st.markdown(f"**{len(df_auto)} responses collected** · {df_auto['agent'].nunique()} agents · {df_auto['run'].max()} runs")
-
+ 
         # Quick IEP summary
         summary = df_auto.groupby('agent')[['int_pct','aff_pct','act_pct']].mean().round(1)
         st.markdown("**Mean IEP by agent:**")
         st.dataframe(summary, use_container_width=True)
-
+ 
         # Show last few responses
         with st.expander("📋 Response log"):
             for _, row in df_auto.tail(8).iterrows():
@@ -2354,13 +2479,13 @@ if session_type == "🔬 Auto Run":
                     f"INT:{row['int_pct']:.0f}% AFF:{row['aff_pct']:.0f}% ACT:{row['act_pct']:.0f}%",
                     unsafe_allow_html=True)
                 st.caption(str(row['response_text'])[:200] + "...")
-
+ 
 # =============================================================================
 # LIVE DISCUSSION
 # =============================================================================
 elif session_type == "Live Discussion":
     st.markdown("### 🎭 Live Discussion")
-
+ 
     if st.session_state.pull_aside_active:
         agent = st.session_state.pull_aside_agent
         emoji = AGENT_EMOJIS.get(agent,'🤖')
@@ -2398,12 +2523,12 @@ elif session_type == "Live Discussion":
                 st.rerun()
         st.text_input("Summary to inject (optional):", key="aside_summary",
                       placeholder="Brief note about what was clarified...")
-
+ 
     else:
         topic = st.text_area("Discussion Topic", value=st.session_state.discussion_topic,
                              height=68, placeholder="What is the persistent topic or problem for this session?")
         st.session_state.discussion_topic = topic
-
+ 
         # Round instruction — changes per round, agents only see current round's directive
         #
         # V40: Three Force buttons prefill the round instruction with conductor
@@ -2434,7 +2559,7 @@ elif session_type == "Live Discussion":
             if st.button("✖ Clear", use_container_width=True, help="Clear the round instruction."):
                 st.session_state[_force_target_key] = ""
                 st.rerun()
-
+ 
         round_instr = st.text_input(
             "Round instruction (optional):",
             placeholder=f"What should agents do in Round {st.session_state.discussion_round + 1}? e.g. 'Critique the approach' or 'Propose three use cases'",
@@ -2442,7 +2567,7 @@ elif session_type == "Live Discussion":
             help="This is separate from the topic — agents see this instruction only for the current round, not future rounds. Force buttons above prefill this field."
         )
         st.session_state.current_round_instruction = round_instr
-
+ 
         # Status bar
         st.markdown(f"""
         <div class="resolution-tracker">
@@ -2452,7 +2577,7 @@ elif session_type == "Live Discussion":
             <strong>Locked:</strong> {'🔒 Yes' if st.session_state.discussion_locked else '🔓 No'}
         </div>
         """, unsafe_allow_html=True)
-
+ 
         # Discussion Thread display
         if st.session_state.discussion_thread:
             st.markdown("### 💬 Discussion Thread")
@@ -2487,9 +2612,9 @@ elif session_type == "Live Discussion":
                         render_score_badge(iep_list[entry_idx], vt_list[entry_idx])
                 st.markdown("---")
             st.markdown('</div>', unsafe_allow_html=True)
-
+ 
         # ── CONDUCTOR TOOLKIT ──────────────────────────────────────────────
-
+ 
         # Step 1 — Run a Round
         st.markdown('<div class="toolkit-section toolkit-step-1"><div class="toolkit-label">① Run a Round — all active agents respond</div>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns([3,1,1])
@@ -2508,15 +2633,16 @@ elif session_type == "Live Discussion":
                 # stance) are additional.
                 import pandas as pd, io as _io
                 _rows = []
-                _exp_run_id = datetime.now().strftime('%Y%m%d_%H%M%S') + "_V42_livedisc"
+                _exp_run_id = datetime.now().strftime('%Y%m%d_%H%M%S') + "_V44_2_livedisc"
                 for turn_idx, entry in enumerate(st.session_state.discussion_thread, start=1):
                     if entry.get("agent") == "Conductor":
                         continue  # skip conductor interventions in CSV
                     agent = entry.get("agent","")
                     content = entry.get("content","") or ""
-                    iep = score_iep(content)
-                    vt  = score_vt(content)
-                    vi  = score_validated_instruments(content)
+                    _clean = strip_truncation_tag(content)   # V44.2: never score the sentinel
+                    iep = score_iep(_clean)
+                    vt  = score_vt(_clean)
+                    vi  = score_validated_instruments(_clean)
                     row = {
                         "turn_id":        turn_idx,
                         "run":            1,
@@ -2538,17 +2664,15 @@ elif session_type == "Live Discussion":
                         "response_text":  content,
                         "embedding":      "[]",
                         "latency_ms":     0,
-                        "error":          False,
+                        "error":          content.startswith("❌"),   # V44.2: was always False
                         "run_id":         _exp_run_id,
                         # V40.3: vt_ = canonical clamped, vraw_ = unclamped,
                         # vhat_ = compositional simplex (see score_vt docstring)
+                        # V44.2: vraw_* and saturation columns removed.
                         **{f"vt_{VT_CODES[c]}":   vt['V_t'][c]   for c in VT_CHANNELS},
-                        **{f"vraw_{VT_CODES[c]}": vt['V_raw'][c] for c in VT_CHANNELS},
                         **{f"vhat_{VT_CODES[c]}": vt['V_hat'][c] for c in VT_CHANNELS},
-                        "vt_saturated":          vt.get('saturated', False),
-                        "vt_saturated_channels": ",".join(vt.get('saturated_channels', [])),
                         "vt_score_status": vt.get('score_status','measured'),
-                        "truncated": bool(vt.get('truncated', False)),
+                        "truncated": is_truncated(content),   # V44.2: was always False
                         "api_model_id":    AGENT_MODELS.get(agent, "unknown"),
                         # Live-discussion specific columns
                         "round":            entry.get("round", st.session_state.discussion_round),
@@ -2557,7 +2681,13 @@ elif session_type == "Live Discussion":
                         "agent_stance":     st.session_state.agent_stances.get(agent,"Neutral"),
                         "entry_type":      entry.get("type","response"),
                         **build_run_provenance(),   # V40.3: version stamps + exact API model IDs
+                        **vt_sub_columns(vt),       # V44.2
                     }
+                    # V44.2: per-turn Gemini fallback, recorded when the turn ran.
+                    row["gemini_thinking_fellback"] = entry.get("gemini_thinking_fellback")
+                    # V44.2: Live Discussion is always visible framing, even if the
+                    # export is clicked while the sidebar shows another mode.
+                    row["session_framing"] = "multi_visible"
                     _rows.append(row)
                 if _rows:
                     _df = pd.DataFrame(_rows)
@@ -2566,7 +2696,7 @@ elif session_type == "Live Discussion":
                         file_name=f"discussion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv", key="dl_disc_csv")
         st.markdown('</div>', unsafe_allow_html=True)
-
+ 
         # Step 2 — Direct: ask one specific agent to respond
         st.markdown('<div class="toolkit-section toolkit-step-2"><div class="toolkit-label">② Direct — ask one specific agent to take a turn</div>', unsafe_allow_html=True)
         st.caption("Only that agent responds — not the whole group.")
@@ -2586,11 +2716,12 @@ elif session_type == "Live Discussion":
                     "agent":directed_to,"content":response,
                     "type":"directed","directed_from":"Conductor",
                     "round":st.session_state.discussion_round,
-                    "score_idx":score_idx
+                    "score_idx":score_idx,
+                    "gemini_thinking_fellback": gemini_fellback_for(directed_to),  # V44.2
                 })
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
+ 
         # Step 3 — Intervene: broadcast conductor message to whole group
         st.markdown('<div class="toolkit-section toolkit-step-3"><div class="toolkit-label">③ Intervene — broadcast your message to the whole group</div>', unsafe_allow_html=True)
         st.caption("Your words appear in the thread as Conductor. All agents see this in the next round.")
@@ -2607,7 +2738,7 @@ elif session_type == "Live Discussion":
             })
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
+ 
         # Step 4 — Pull Aside
         st.markdown('<div class="toolkit-section toolkit-step-3"><div class="toolkit-label">④ Pull Aside — private sidebar with one agent</div>', unsafe_allow_html=True)
         col1, col2 = st.columns([3,1])
@@ -2622,7 +2753,7 @@ elif session_type == "Live Discussion":
                     st.session_state.pull_aside_thread = []
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
+ 
         # Step 5 — Co-Conductor
         st.markdown('<div class="toolkit-section toolkit-step-4"><div class="toolkit-label">⑤ Co-Conductor — Claude reads the scores and advises you privately</div>', unsafe_allow_html=True)
         col1, col2 = st.columns([3,1])
@@ -2644,7 +2775,7 @@ elif session_type == "Live Discussion":
                     st.markdown(f"**Observation {i}:** {note}")
                     st.markdown("---")
         st.markdown('</div>', unsafe_allow_html=True)
-
+ 
         # Step 6 — Resolve
         st.markdown('<div class="toolkit-section toolkit-step-5"><div class="toolkit-label">⑥ Resolve — lock the discussion and synthesize</div>', unsafe_allow_html=True)
         col1, col2, col3, col4 = st.columns(4)
@@ -2684,11 +2815,12 @@ elif session_type == "Live Discussion":
                     st.session_state.resolution_text = resolution
                     st.session_state.discussion_thread.append({
                         "agent":resolution_agent,"content":resolution,
-                        "type":"resolution","round":st.session_state.discussion_round
+                        "type":"resolution","round":st.session_state.discussion_round,
+                        "gemini_thinking_fellback": gemini_fellback_for(resolution_agent),  # V44.2
                     })
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
+ 
         # Run Round execution
         if run_round_btn and topic and st.session_state.active_agents:
             round_instruction = st.session_state.get('current_round_instruction', '')
@@ -2702,25 +2834,26 @@ elif session_type == "Live Discussion":
                         "agent":agent_name,"content":response,
                         "type":"response","round":st.session_state.discussion_round+1,
                         "score_idx":score_idx,
-                        "round_instruction": round_instruction
+                        "round_instruction": round_instruction,
+                        "gemini_thinking_fellback": gemini_fellback_for(agent_name),  # V44.2
                     })
                 status.update(label=f"✅ Round {st.session_state.discussion_round+1} Complete!", state="complete")
             st.session_state.discussion_round += 1
             st.rerun()
-
+ 
 # =============================================================================
 # MULTI-ROUND
 # =============================================================================
 elif session_type == "Multi-Round":
     st.markdown("### 🔄 Multi-Round Iterative Mode")
     st.markdown("*Each round: all agents respond, seeing all previous rounds.*")
-
+ 
     current_round = len(st.session_state.multi_round_history) + 1
     st.info(f"**Current Round:** {current_round}")
-
+ 
     prompt = st.text_area(f"Round {current_round} Prompt", height=100,
         placeholder="What should the agents respond to this round?", key=f"mr_prompt_{current_round}")
-
+ 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         run_round_btn = st.button("▶️ Run Round", type="primary", use_container_width=True)
@@ -2738,7 +2871,7 @@ elif session_type == "Multi-Round":
     with col4:
         view_mode = st.selectbox("View", ["Grid","Present"], label_visibility="collapsed", key="multi_view")
         st.session_state.view_mode = view_mode.lower()
-
+ 
     if run_round_btn and prompt and st.session_state.active_agents:
         round_responses = {}
         round_scores = {}
@@ -2754,7 +2887,7 @@ elif session_type == "Multi-Round":
             status.update(label=f"✅ Round {current_round} Complete!", state="complete")
         st.session_state.multi_round_history.append({"prompt":prompt,"responses":round_responses,"scores":round_scores})
         st.rerun()
-
+ 
     for i, rd in enumerate(st.session_state.multi_round_history, 1):
         st.markdown(f'<div class="round-separator">📍 Round {i} — {rd.get("prompt","")[:60]}{"..." if len(rd.get("prompt",""))>60 else ""}</div>', unsafe_allow_html=True)
         with st.container():
@@ -2776,14 +2909,14 @@ elif session_type == "Multi-Round":
             else:
                 render_present_mode(rd["responses"])
         st.markdown("---")
-
+ 
 # =============================================================================
 # SINGLE ROUND
 # =============================================================================
 else:
     st.markdown("### 📝 Single Round")
     prompt = st.text_area("Your Prompt", height=120, placeholder="What's the problem, question, or challenge?")
-
+ 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         run_btn = st.button("🚀 Run", type="primary", use_container_width=True)
@@ -2796,7 +2929,7 @@ else:
     with col4:
         view_mode = st.selectbox("View", ["Grid","Present"], label_visibility="collapsed")
         st.session_state.view_mode = view_mode.lower()
-
+ 
     if run_btn and prompt and st.session_state.active_agents:
         st.session_state.round1_responses = {}
         st.session_state.iep_scores = {}
@@ -2816,20 +2949,20 @@ else:
                     record_scores(agent_name, response, 1)
             status.update(label="✅ Complete!", state="complete")
         st.rerun()
-
+ 
     if clear_btn:
         st.session_state.round1_responses = {}
         st.session_state.iep_scores = {}
         st.session_state.vt_scores  = {}
         st.rerun()
-
+ 
     if st.session_state.round1_responses:
         st.markdown("### 📊 Responses")
         if st.session_state.view_mode == "grid":
             render_agent_response_grid(st.session_state.round1_responses, round_num=1, score=True)
         else:
             render_present_mode(st.session_state.round1_responses)
-
+ 
         st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
@@ -2851,15 +2984,15 @@ else:
                                 f"<span style='color:{dom_color};font-weight:700;'>{iep['dominant']}</span> "
                                 f"INT:{iep['int']:.0f}% AFF:{iep['aff']:.0f}% ACT:{iep['act']:.0f}% | "
                                 f"{iep['stance']} · {iep['tone']}", unsafe_allow_html=True)
-
+ 
 # =============================================================================
 # SESSION NOTES + ADDITIONAL DOCUMENT UPLOAD
 # =============================================================================
 st.markdown("---")
 st.markdown("### 🎹 Session Notes & Documents")
-
+ 
 notes_col, doc_col = st.columns([3, 2])
-
+ 
 with notes_col:
     st.caption("Your private conductor notes — not sent to agents.")
     st.session_state.session_notes = st.text_area(
@@ -2867,7 +3000,7 @@ with notes_col:
         placeholder="Key observations, decisions, follow-up actions...",
         label_visibility="collapsed"
     )
-
+ 
 with doc_col:
     st.caption("Load a document into session context — agents will read it.")
     bottom_upload = st.file_uploader(
@@ -2890,7 +3023,7 @@ with doc_col:
             st.session_state.session_document = None
             st.session_state.session_document_name = ""
             st.rerun()
-
+ 
 st.markdown("---")
 st.markdown("""
 <div style="text-align:center; color:#666; padding:1rem;">
@@ -2899,3 +3032,4 @@ st.markdown("""
     SYNINT Team — April 2026 · Kouns, W.C.
 </div>
 """, unsafe_allow_html=True)
+ 
