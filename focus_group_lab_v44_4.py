@@ -1686,7 +1686,7 @@ AGENT_MODELS = {
     # "-latest" is an alias that auto-resolves.
     "Claude":  "claude-sonnet-5",        # Claude Sonnet 5
     "ChatGPT": "gpt-4o",                 # unchanged — was returning responses
-    "Grok":    "grok-3-latest",          # alias — auto-resolves
+    "Grok":    "grok-4.3",          # explicit model; set 2026-10-04 (grok-3-latest had been resolving to 4.3 since 2026-05-15)
     "Gemini":  "gemini-3.6-flash",       # Gemini 3.6 Flash. Called successfully
                                          # on 2026-07-25 (see V43.1 note).
 }
