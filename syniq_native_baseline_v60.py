@@ -364,7 +364,7 @@ DEPTH_CONFIGS = {
     # elicits, so responses finish naturally. If a response still hits the
     # cap, the truncation flag (V58) marks the row so it can't pass silently.
     "Shallow": {"max_tokens": 800, "instruction": "Be brief and concise."},
-    "Medium": {"max_tokens": 2048, "instruction": "Provide a balanced, moderate-length response."},
+    "Medium": {"max_tokens": 2048, "instruction": "Provide a moderate-length response."},
     "Deep": {"max_tokens": 4096, "instruction": "Provide thorough, detailed analysis."},
     "Ultra-Deep": {"max_tokens": 8192, "instruction": "Provide exhaustive, comprehensive exploration."},
 }
